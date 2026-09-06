@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -41,10 +42,7 @@ def register(ctx: ToolContext) -> list:
             url: URL или путь к файлу.
         """
         ctx.ensure_allowed(f"открыть {url}")
-        opener = _opener()
-        if opener is None:
-            raise ToolError("на этой машине нет open/xdg-open")
-        subprocess.Popen([opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _open_externally(url)
         return f"открыл {url}"
 
     @beta_tool
@@ -67,6 +65,26 @@ def register(ctx: ToolContext) -> list:
         return "уведомление показано"
 
     return [current_time, system_info, open_url, notify]
+
+
+def _open_externally(target: str) -> None:
+    """Открывает ссылку или файл средствами системы.
+
+    В Windows нет ни xdg-open, ни open — там единственный способ это
+    os.startfile, которого, в свою очередь, нет на остальных системах.
+    Поэтому берём его через getattr, а не импортом.
+    """
+    if platform.system() == "Windows":
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            raise ToolError("os.startfile недоступен на этой сборке Python")
+        startfile(target)
+        return
+
+    opener = _opener()
+    if opener is None:
+        raise ToolError("на этой машине нет open/xdg-open")
+    subprocess.Popen([opener, target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _opener() -> str | None:
