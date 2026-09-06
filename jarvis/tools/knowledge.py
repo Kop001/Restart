@@ -61,7 +61,7 @@ def register(ctx: ToolContext) -> list:
         try:
             item = ctx.reminders.add(text, when)
         except ValueError as exc:
-            raise ToolError(str(exc))
+            raise ToolError(str(exc)) from exc
         return f"напоминание [{item['id']}] на {item['due']}: {item['text']}"
 
     @beta_tool

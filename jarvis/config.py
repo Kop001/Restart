@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+
+import tomllib
 
 # Актуальная модель Claude. Менять только осознанно: разные модели
 # по-разному относятся к параметрам thinking/effort.
@@ -78,7 +79,9 @@ class Config:
     approval_timeout: float = 300.0
     # Команды с этими префиксами выполняются без подтверждения даже в режиме ask.
     shell_allowlist: list[str] = field(
-        default_factory=lambda: ["ls", "cat", "pwd", "date", "df", "free", "uptime", "git status", "git log"]
+        default_factory=lambda: [
+            "ls", "cat", "pwd", "date", "df", "free", "uptime", "git status", "git log",
+        ]
     )
     shell_timeout: int = 60
     # Корень, за пределы которого файловые инструменты не выходят.
@@ -147,7 +150,7 @@ class Config:
 
     # --- загрузка ---
     @classmethod
-    def load(cls, overrides: dict | None = None) -> "Config":
+    def load(cls, overrides: dict | None = None) -> Config:
         data: dict = {}
 
         path = _config_path()
@@ -170,7 +173,10 @@ class Config:
 
 def _coerce(raw: str, type_hint) -> object:
     """Приводит строку из окружения к типу поля."""
-    hint = type_hint if isinstance(type_hint, str) else getattr(type_hint, "__name__", str(type_hint))
+    hint = (
+        type_hint if isinstance(type_hint, str)
+        else getattr(type_hint, "__name__", str(type_hint))
+    )
     if hint.startswith("bool"):
         return raw.strip().lower() in {"1", "true", "yes", "on", "да"}
     if hint.startswith("int"):

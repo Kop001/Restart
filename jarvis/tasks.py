@@ -14,9 +14,9 @@ import dataclasses
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Callable
 
 import anthropic
 

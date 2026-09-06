@@ -26,6 +26,7 @@ tts = [
 ]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -39,3 +40,19 @@ include = ["jarvis*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# E,F — ошибки и стиль; I — порядок импортов; UP — устаревшие конструкции;
+# B — типичные ловушки; RUF — правила самого ruff.
+select = ["E", "F", "I", "UP", "B", "RUF"]
+# Проект русскоязычный: правила про «кириллица похожа на латиницу»
+# срабатывают на каждой строке текста и полезного не говорят.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# В тестах нормально трогать внутренности и писать длинные фикстуры.
+"tests/*" = ["B011", "RUF001"]

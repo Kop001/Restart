@@ -9,11 +9,10 @@ from __future__ import annotations
 import json
 import re
 import threading
-import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable
 
 _RELATIVE = re.compile(
     r"(?:через\s+)?(\d+)\s*(сек|секунд\w*|мин|минут\w*|час\w*|дн\w*|s|sec|m|min|h|hour|d|day)s?\b",
@@ -123,7 +122,12 @@ class Reminders:
 class ReminderScheduler:
     """Фоновый поток, который отдаёт наступившие напоминания в callback."""
 
-    def __init__(self, reminders: Reminders, on_fire: Callable[[dict], None], interval: float = 1.0) -> None:
+    def __init__(
+        self,
+        reminders: Reminders,
+        on_fire: Callable[[dict], None],
+        interval: float = 1.0,
+    ) -> None:
         self.reminders = reminders
         self.on_fire = on_fire
         self.interval = interval

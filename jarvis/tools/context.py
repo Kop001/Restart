@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import functools
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from ..config import Config
 from ..memory import Memory
@@ -50,7 +51,7 @@ class ToolContext:
     say: Callable[[str], None]
     # Менеджер фоновых задач. None — у фоновых исполнителей: они не плодят
     # собственных исполнителей, иначе один запрос развернётся в лавину.
-    tasks: "TaskManager | None" = None
+    tasks: TaskManager | None = None
 
     def ensure_allowed(self, action: str) -> None:
         """Проверяет политику подтверждений перед опасным действием."""

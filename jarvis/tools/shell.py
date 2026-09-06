@@ -38,8 +38,8 @@ def register(ctx: ToolContext) -> list:
                 text=True,
                 timeout=timeout or ctx.config.shell_timeout,
             )
-        except subprocess.TimeoutExpired:
-            raise ToolError(f"команда не уложилась в таймаут: {command}")
+        except subprocess.TimeoutExpired as exc:
+            raise ToolError(f"команда не уложилась в таймаут: {command}") from exc
 
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()

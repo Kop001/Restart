@@ -49,7 +49,7 @@ class Microphone:
         except MicrophoneUnavailable:
             return False
 
-    def record_phrase(self) -> "object | None":
+    def record_phrase(self) -> object | None:
         """Пишет одну фразу и возвращает моно float32 или None, если была тишина."""
         sd, np = self._backend()
         chunks: list = []
@@ -84,7 +84,7 @@ class Microphone:
 
     def listen_window(self, seconds: float = 2.0):
         """Пишет короткое окно фиксированной длины — для ловли слова-активатора."""
-        sd, np = self._backend()
+        sd, _np = self._backend()
         frames = int(seconds * SAMPLE_RATE)
         audio = sd.rec(frames, samplerate=SAMPLE_RATE, channels=1,
                        dtype="float32", device=self.device)

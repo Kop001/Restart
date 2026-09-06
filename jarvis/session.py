@@ -150,7 +150,8 @@ class Session:
             print(self.agent.memory.as_prompt() or "Память пуста.")
         elif action == "reminders":
             items = self.agent.reminders.pending()
-            print("\n".join(f"[{i['id']}] {i['due']} — {i['text']}" for i in items) or "Напоминаний нет.")
+            lines = "\n".join(f"[{i['id']}] {i['due']} — {i['text']}" for i in items)
+            print(lines or "Напоминаний нет.")
         elif action == "tasks":
             items = self.tasks.list()
             print("\n".join(task.summary() for task in items) or "Фоновых задач нет.")

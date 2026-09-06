@@ -19,7 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="идентификатор модели Claude")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
                         help="глубина размышлений модели")
-    parser.add_argument("--workspace", help="каталог, за пределы которого не выходят файловые инструменты")
+    parser.add_argument("--workspace",
+                        help="каталог, за пределы которого не выходят файловые инструменты")
     parser.add_argument("--confirm", dest="confirm_mode", choices=["ask", "auto", "deny"],
                         help="политика подтверждения опасных действий")
     parser.add_argument("--no-web-search", dest="web_search", action="store_false", default=None,
@@ -107,7 +108,8 @@ def doctor(config: Config) -> int:
 
     print(f"jarvis {__version__}\n")
     checks = [
-        ("Ключ Claude API", "да" if _has_credentials() else "нет — экспортируйте ANTHROPIC_API_KEY"),
+        ("Ключ Claude API",
+         "да" if _has_credentials() else "нет — экспортируйте ANTHROPIC_API_KEY"),
         ("Модель", config.model),
         ("Рабочий каталог", str(config.workspace_path)),
         ("Каталог состояния", str(config.state)),

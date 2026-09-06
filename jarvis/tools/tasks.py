@@ -38,7 +38,7 @@ def register(ctx: ToolContext) -> list:
         try:
             task = manager().spawn(goal, title)
         except ValueError as exc:
-            raise ToolError(str(exc))
+            raise ToolError(str(exc)) from exc
         return f"задача [{task.id}] «{task.title}» запущена в фоне"
 
     @beta_tool

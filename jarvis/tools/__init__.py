@@ -33,4 +33,4 @@ def build_tools(ctx: ToolContext, with_tasks: bool = True) -> list:
     return tools
 
 
-__all__ = ["ToolContext", "ToolError", "build_tools", "WEB_SEARCH_TOOL"]
+__all__ = ["WEB_SEARCH_TOOL", "ToolContext", "ToolError", "build_tools"]

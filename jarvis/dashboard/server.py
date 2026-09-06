@@ -14,11 +14,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..agent import Agent
+from ..approvals import ApprovalQueue
 from ..config import Config
 from ..reminders import ReminderScheduler
 from ..tasks import TaskManager
 from ..voice import Speaker
-from ..approvals import ApprovalQueue
 
 STATIC = Path(__file__).parent / "static"
 
@@ -90,11 +90,7 @@ class Backend:
                 "workspace": str(self.config.workspace_path),
                 "wake_word": self.config.wake_word,
             },
-            "skills": [
-                {"name": t["name"], "kind": "server"} if isinstance(t, dict)
-                else {"name": t.to_dict()["name"], "description": t.to_dict()["description"], "kind": "local"}
-                for t in agent.tools
-            ],
+            "skills": [_skill(tool) for tool in agent.tools],
             "memory": agent.memory.facts,
             "reminders": agent.reminders.pending(),
             "tasks": [task.as_dict() for task in self.tasks.list()],
@@ -107,21 +103,31 @@ class Backend:
 
     def connections(self) -> list[dict]:
         """Что из внешнего мира реально доступно этой сборке."""
+        import os
+
         from ..voice.stt import _detect as stt_detect
         from ..voice.tts import detect_backend as tts_detect
-
-        import os
 
         tts = tts_detect()
         stt = stt_detect()
         return [
-            {"name": "Claude API", "status": "ok" if os.environ.get("ANTHROPIC_API_KEY") else "нет ключа"},
+            {"name": "Claude API",
+             "status": "ok" if os.environ.get("ANTHROPIC_API_KEY") else "нет ключа"},
             {"name": "Веб-поиск", "status": "ok" if self.config.web_search else "выключен"},
             {"name": "Синтез речи", "status": tts if tts != "none" else "не найден"},
             {"name": "Распознавание речи", "status": stt if stt != "none" else "не найден"},
             {"name": "Оболочка", "status": self.config.confirm_mode},
-            {"name": "Фоновые исполнители", "status": f"до {self.config.max_parallel_tasks} параллельно"},
+            {"name": "Фоновые исполнители",
+             "status": f"до {self.config.max_parallel_tasks} параллельно"},
         ]
+
+
+def _skill(tool) -> dict:
+    """Описывает инструмент для панели: серверный он или локальный."""
+    if isinstance(tool, dict):
+        return {"name": tool["name"], "kind": "server"}
+    schema = tool.to_dict()
+    return {"name": schema["name"], "description": schema["description"], "kind": "local"}
 
 
 def make_handler(backend: Backend):
@@ -192,7 +198,10 @@ def make_handler(backend: Backend):
                 return self._json({"ok": backend.agent.memory.forget(data.get("id", ""))})
             if route == "/api/reminders":
                 try:
-                    return self._json(backend.agent.reminders.add(data.get("text", ""), data.get("when", "")))
+                    item = backend.agent.reminders.add(
+                        data.get("text", ""), data.get("when", "")
+                    )
+                    return self._json(item)
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
             if route == "/api/reminders/cancel":
@@ -213,7 +222,12 @@ def make_handler(backend: Backend):
     return Handler
 
 
-def serve(config: Config, host: str = "127.0.0.1", port: int = 8787, open_browser: bool = True) -> None:
+def serve(
+    config: Config,
+    host: str = "127.0.0.1",
+    port: int = 8787,
+    open_browser: bool = True,
+) -> None:
     backend = Backend(config)
     backend.scheduler.start()
     httpd = ThreadingHTTPServer((host, port), make_handler(backend))

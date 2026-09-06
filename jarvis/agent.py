@@ -94,14 +94,15 @@ class Agent:
             f"- подтверждение опасных действий: {self.config.confirm_mode}",
         ]
         if pending:
-            lines.append("- активные напоминания: " + "; ".join(f"{i['due']} {i['text']}" for i in pending))
+            due = "; ".join(f"{i['due']} {i['text']}" for i in pending)
+            lines.append(f"- активные напоминания: {due}")
         return "\n".join(lines)
 
     # --- основной цикл ---
 
     def ask(self, user_input: str) -> str:
         """Прогоняет реплику владельца через модель и возвращает текст ответа."""
-        messages = list(self.history.messages) + [{"role": "user", "content": user_input}]
+        messages = [*self.history.messages, {"role": "user", "content": user_input}]
         new_messages: list[dict] = [{"role": "user", "content": user_input}]
 
         restarts = 0

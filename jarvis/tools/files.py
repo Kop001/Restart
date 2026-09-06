@@ -23,7 +23,8 @@ def register(ctx: ToolContext) -> list:
         if not entries:
             return f"{target}: пусто"
         lines = [
-            f"{'d' if e.is_dir() else '-'} {e.name}" + ("" if e.is_dir() else f"  {e.stat().st_size} b")
+            f"{'d' if e.is_dir() else '-'} {e.name}"
+            + ("" if e.is_dir() else f"  {e.stat().st_size} b")
             for e in entries[:200]
         ]
         return f"{target}:\n" + "\n".join(lines)
