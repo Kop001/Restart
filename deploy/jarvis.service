@@ -1,0 +1,18 @@
+# Джарвис как служба пользователя (Linux, systemd).
+# Установка: deploy/install.sh — он положит файл куда надо и включит автозапуск.
+[Unit]
+Description=Джарвис — личный ассистент
+After=network-online.target
+
+[Service]
+Type=simple
+# Ключ API и настройки лежат отдельно: юнит не должен содержать секретов.
+EnvironmentFile=%h/.config/jarvis/env
+# Панель слушает только 127.0.0.1: снаружи к ней не подключиться.
+ExecStart=%h/.local/bin/jarvis panel --no-open
+# Падение не должно означать конец: постоянное присутствие — весь смысл службы.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

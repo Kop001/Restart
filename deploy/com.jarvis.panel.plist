@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Джарвис как служба пользователя (macOS, launchd).
+     Установка: deploy/install.sh -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jarvis.panel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__JARVIS__</string>
+    <string>panel</string>
+    <string>--no-open</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>ANTHROPIC_API_KEY</key><string>__KEY__</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/jarvis.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/jarvis.log</string>
+</dict>
+</plist>

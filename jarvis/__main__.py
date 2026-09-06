@@ -36,7 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
     voice.add_argument("--stt-model", help="модель faster-whisper: tiny/base/small/medium/large-v3")
 
     panel = sub.add_parser("panel", help="веб-панель оператора")
-    panel.add_argument("--host", default="127.0.0.1")
+    panel.add_argument("--host", default="127.0.0.1",
+                       help="0.0.0.0 — открыть панель в локальную сеть, для телефона")
+    panel.add_argument("--lan", action="store_true",
+                       help="открыть панель всей локальной сети (по умолчанию выключено)")
     panel.add_argument("--port", type=int, default=8787)
     panel.add_argument("--no-open", dest="open_browser", action="store_false", default=True)
     panel.add_argument("--voice", action="store_true", default=None, help="озвучивать ответы вслух")
@@ -76,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     if command == "panel":
         from .dashboard import serve
 
-        serve(config, host=args.host, port=args.port, open_browser=args.open_browser)
+        host = "0.0.0.0" if getattr(args, "lan", False) else args.host
+        serve(config, host=host, port=args.port, open_browser=args.open_browser)
         return 0
 
     from .session import Session

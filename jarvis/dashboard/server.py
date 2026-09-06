@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,7 @@ from ..config import Config
 from ..reminders import ReminderScheduler
 from ..tasks import TaskManager
 from ..voice import Speaker
+from .auth import COOKIE, load_or_create_token, matches, token_from_request
 
 STATIC = Path(__file__).parent / "static"
 
@@ -28,6 +30,7 @@ class Backend:
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.token = load_or_create_token(config.state / "panel-token")
         self.approvals = ApprovalQueue(timeout=config.approval_timeout)
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
         self.events: list[dict] = []
@@ -147,11 +150,18 @@ def make_handler(backend: Backend):
             self.end_headers()
             self.wfile.write(body)
 
-        def _file(self, path: Path, content_type: str) -> None:
+        def _file(self, path: Path, content_type: str, set_cookie: bool = False) -> None:
             body = path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            if set_cookie:
+                # Токен пришёл ссылкой — закрепляем, чтобы он не остался
+                # в адресной строке и в истории браузера.
+                self.send_header(
+                    "Set-Cookie",
+                    f"{COOKIE}={backend.token}; Path=/; Max-Age=31536000; SameSite=Lax",
+                )
             self.end_headers()
             self.wfile.write(body)
 
@@ -164,12 +174,28 @@ def make_handler(backend: Backend):
             except json.JSONDecodeError:
                 return {}
 
+        # --- доступ ---
+
+        def _authorized(self) -> bool:
+            url = urlparse(self.path)
+            given = token_from_request(url.query, self.headers.get("Cookie"))
+            return matches(backend.token, given)
+
+        def _deny(self) -> None:
+            self._json({"error": "нужен токен доступа"}, 401)
+
         # --- маршруты ---
 
         def do_GET(self) -> None:
+            if not self._authorized():
+                return self._deny()
             route = urlparse(self.path).path
             if route in ("/", "/index.html"):
-                self._file(STATIC / "index.html", "text/html; charset=utf-8")
+                self._file(
+                    STATIC / "index.html",
+                    "text/html; charset=utf-8",
+                    set_cookie=urlparse(self.path).query != "",
+                )
             elif route == "/api/state":
                 self._json(backend.state())
             elif route == "/api/pending":
@@ -178,6 +204,8 @@ def make_handler(backend: Backend):
                 self._json({"error": "не найдено"}, 404)
 
         def do_POST(self) -> None:
+            if not self._authorized():
+                return self._deny()
             route = urlparse(self.path).path
             data = self._body()
             if route == "/api/chat":
@@ -222,6 +250,22 @@ def make_handler(backend: Backend):
     return Handler
 
 
+def local_ip() -> str:
+    """Адрес машины в локальной сети — по нему панель открывают с телефона.
+
+    Не резолвим имя хоста: оно часто указывает на 127.0.0.1. Вместо этого
+    смотрим, с какого адреса ушёл бы пакет наружу; сокет UDP никуда не шлёт.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        probe.close()
+
+
 def serve(
     config: Config,
     host: str = "127.0.0.1",
@@ -231,8 +275,17 @@ def serve(
     backend = Backend(config)
     backend.scheduler.start()
     httpd = ThreadingHTTPServer((host, port), make_handler(backend))
-    url = f"http://{host}:{port}"
-    print(f"Панель Джарвиса: {url}  (Ctrl+C — остановить)")
+
+    shown = local_ip() if host in ("0.0.0.0", "::") else host
+    url = f"http://{shown}:{port}/?token={backend.token}"
+    print(f"Панель Джарвиса: {url}")
+    if host in ("0.0.0.0", "::"):
+        print("ВНИМАНИЕ: панель открыта всей локальной сети. Кто угодно в этом")
+        print("вайфае увидит её; защищает только токен из ссылки.")
+        print(f"Токен лежит в {config.state / 'panel-token'} и не меняется при перезапуске.")
+    else:
+        print("Панель слушает только эту машину. Снаружи к ней не подключиться.")
+    print("Ctrl+C — остановить")
     if open_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     try:

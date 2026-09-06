@@ -102,7 +102,14 @@ const SECTIONS = [
 
 let state = null, current = 'home', chatLog = [], pendingId = null;
 
-function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
+// Шаблон может содержать несколько корневых элементов — тогда отдаём фрагмент
+// целиком. Через <div> и firstElementChild всё, кроме первого, терялось молча,
+// а <template> вдобавок правильно разбирает <tr> вне таблицы.
+function el(html){
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.childElementCount === 1 ? t.content.firstElementChild : t.content;
+}
 function esc(s){ return String(s??'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
 function buildNav(){
@@ -297,7 +304,7 @@ function viewSkills(view){
 
 function viewCore(view){
   view.appendChild(el(`<div class="card"><h3>Граф знаний</h3>
-    <div id="graph" style="min-height:420px"></div></div>
+    <div id="graph" style="min-height:460px"></div></div>
     <div class="card" style="margin-top:12px"><h3>Факты</h3>
       <div class="row" style="margin-bottom:10px">
         <input id="ft" placeholder="новый факт"><input id="fg" placeholder="тег" style="max-width:160px">
@@ -316,9 +323,12 @@ function viewCore(view){
 
 async function forgetFact(id){ await api('/api/memory/forget', {id}); refresh(); }
 
-/* Радиальный граф: центр — Джарвис, кольцо — теги, внешние узлы — факты. */
+/* Радиальный граф: центр — Джарвис, кольцо — теги, внешние узлы — факты.
+   Подписи фактов уводим наружу и выравниваем по стороне: иначе они
+   сходятся у центра и наезжают друг на друга. */
 function drawGraph(host){
-  const W = host.clientWidth || 900, H = 440, cx = W/2, cy = H/2;
+  const W = host.clientWidth || 900, H = 460, cx = W/2, cy = H/2;
+  const tagR = Math.min(150, W * 0.17), factR = Math.min(240, W * 0.27);
   const tags = {};
   for (const f of state.memory) (tags[f.tag] ||= []).push(f);
   const names = Object.keys(tags);
@@ -329,15 +339,18 @@ function drawGraph(host){
   }
   names.forEach((name, i) => {
     const a = (i / names.length) * Math.PI * 2 - Math.PI/2;
-    const tx = cx + Math.cos(a) * 150, ty = cy + Math.sin(a) * 130;
+    const tx = cx + Math.cos(a) * tagR, ty = cy + Math.sin(a) * (tagR * 0.92);
     parts.push(`<line x1="${cx}" y1="${cy}" x2="${tx}" y2="${ty}" stroke="#1c2733"/>`);
     tags[name].forEach((f, j, arr) => {
-      const spread = (j - (arr.length - 1) / 2) * 0.28;
-      const fx = cx + Math.cos(a + spread) * 210, fy = cy + Math.sin(a + spread) * 190;
-      parts.push(`<line x1="${tx}" y1="${ty}" x2="${fx}" y2="${fy}" stroke="#152029" stroke-dasharray="2 3"/>`);
+      const ang = a + (j - (arr.length - 1) / 2) * 0.42;
+      const fx = cx + Math.cos(ang) * factR, fy = cy + Math.sin(ang) * (factR * 0.86);
+      const right = fx >= cx;
+      const label = f.text.length > 24 ? f.text.slice(0, 23) + '…' : f.text;
+      parts.push(`<line x1="${tx}" y1="${ty}" x2="${fx}" y2="${fy}"
+        stroke="#152029" stroke-dasharray="2 3"/>`);
       parts.push(`<circle cx="${fx}" cy="${fy}" r="4" fill="#0d1117" stroke="#00e5c0"/>`);
-      parts.push(`<text x="${fx}" y="${fy - 9}" fill="#6b7f95" font-size="9"
-        text-anchor="middle">${esc(f.text.slice(0, 26))}</text>`);
+      parts.push(`<text x="${fx + (right ? 11 : -11)}" y="${fy + 3.5}" fill="#6b7f95"
+        font-size="9.5" text-anchor="${right ? 'start' : 'end'}">${esc(label)}</text>`);
     });
     parts.push(`<circle cx="${tx}" cy="${ty}" r="7" fill="#111823" stroke="#ff4d6d"/>`);
     parts.push(`<text x="${tx}" y="${ty - 13}" fill="#d7e2ee" font-size="10"
