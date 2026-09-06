@@ -13,6 +13,12 @@ workspace = "~"          # файловые инструменты не выхо
 web_search = true
 shell_allowlist = ["ls", "cat", "pwd", "date", "df", "git status", "git log"]
 
+# --- фоновые исполнители ---
+max_parallel_tasks = 3     # сколько задач идёт одновременно
+task_effort = "high"       # глубина размышлений исполнителя
+task_confirm_mode = "deny" # deny | ask (окно подтверждения есть только в панели) | auto
+task_max_iterations = 30   # потолок ходов одной задачи
+
 # --- голос ---
 voice = false
 wake_word = "джарвис"

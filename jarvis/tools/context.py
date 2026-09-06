@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from ..config import Config
 from ..memory import Memory
 from ..reminders import Reminders
+
+if TYPE_CHECKING:  # только для подсказок типов: иначе вышел бы цикл импорта
+    from ..tasks import TaskManager
 
 
 class ToolError(Exception):
@@ -24,6 +27,9 @@ class ToolContext:
     confirm: Callable[[str], bool]
     # Сказать что-то вслух (или напечатать, если голос выключен).
     say: Callable[[str], None]
+    # Менеджер фоновых задач. None — у фоновых исполнителей: они не плодят
+    # собственных исполнителей, иначе один запрос развернётся в лавину.
+    tasks: "TaskManager | None" = None
 
     def ensure_allowed(self, action: str) -> None:
         """Проверяет политику подтверждений перед опасным действием."""

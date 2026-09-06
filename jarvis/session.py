@@ -9,6 +9,7 @@ import sys
 from .agent import Agent
 from .config import Config
 from .reminders import ReminderScheduler
+from .tasks import TaskManager
 from .voice import Microphone, Speaker, Transcriber
 
 COMMANDS = {
@@ -16,6 +17,7 @@ COMMANDS = {
     "/сброс": "reset", "/reset": "reset",
     "/память": "memory", "/memory": "memory",
     "/напоминания": "reminders", "/reminders": "reminders",
+    "/задачи": "tasks", "/tasks": "tasks",
     "/помощь": "help", "/help": "help",
 }
 
@@ -24,6 +26,7 @@ HELP = """\
   /помощь        — этот список
   /память        — что Джарвис помнит о вас
   /напоминания   — активные напоминания
+  /задачи        — фоновые задачи и их состояние
   /сброс         — забыть текущий разговор (память останется)
   /выход         — завершить работу
 """
@@ -37,6 +40,15 @@ class Session:
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
         self.agent = Agent(config, confirm=self._confirm, say=self.say)
         self.scheduler = ReminderScheduler(self.agent.reminders, self._fire_reminder)
+        self.tasks = TaskManager(
+            config,
+            self.agent.memory,
+            self.agent.reminders,
+            client=self.agent.client,
+            confirm=self._confirm_background,
+            on_done=self._task_done,
+        )
+        self.agent.attach_tasks(self.tasks)
 
     # --- вывод и подтверждения ---
 
@@ -54,8 +66,26 @@ class Session:
             return False
         return answer in {"y", "yes", "д", "да"}
 
+    def _confirm_background(self, action: str) -> bool:
+        """Подтверждение для фоновой задачи.
+
+        В терминале спросить нельзя: ввод занят основным диалогом. Поэтому
+        отказываем и говорим об этом вслух — в панели такое окно есть.
+        """
+        print(f"\n⚠️  Фоновая задача просила разрешение: {action}")
+        print("   В терминале подтвердить нельзя — отклонено. Используйте `jarvis panel`.")
+        return False
+
     def _fire_reminder(self, item: dict) -> None:
         self.say(f"Напоминание: {item['text']}")
+
+    def _task_done(self, task) -> None:
+        if task.status == "cancelled":
+            return
+        if task.error:
+            self.say(f"Задача «{task.title}» сорвалась: {task.error}")
+        else:
+            self.say(f"Задача «{task.title}» готова. {task.result}")
 
     # --- команды ---
 
@@ -74,6 +104,9 @@ class Session:
         elif action == "reminders":
             items = self.agent.reminders.pending()
             print("\n".join(f"[{i['id']}] {i['due']} — {i['text']}" for i in items) or "Напоминаний нет.")
+        elif action == "tasks":
+            items = self.tasks.list()
+            print("\n".join(task.summary() for task in items) or "Фоновых задач нет.")
         return False
 
     def respond(self, text: str) -> str:
@@ -102,6 +135,7 @@ class Session:
                 self.respond(user_input)
         finally:
             self.scheduler.stop()
+            self.tasks.shutdown()
 
     def run_voice(self) -> None:
         mic = Microphone(
@@ -148,6 +182,7 @@ class Session:
             print()
         finally:
             self.scheduler.stop()
+            self.tasks.shutdown()
 
 
 def strip_wake_word(text: str, wake: str) -> str | None:

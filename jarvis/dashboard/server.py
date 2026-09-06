@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from ..agent import Agent
 from ..config import Config
 from ..reminders import ReminderScheduler
+from ..tasks import TaskManager
 from ..voice import Speaker
 from .approvals import ApprovalQueue
 
@@ -32,16 +33,42 @@ class Backend:
         self.events: list[dict] = []
         self.agent = Agent(config, confirm=self.approvals.request, say=self.say)
         self.scheduler = ReminderScheduler(self.agent.reminders, self._on_reminder)
+        self.tasks = TaskManager(
+            config,
+            self.agent.memory,
+            self.agent.reminders,
+            client=self.agent.client,
+            # В панели фоновая задача может спросить разрешение: окно
+            # подтверждения работает из любого потока.
+            confirm=self.approvals.request if config.task_confirm_mode == "ask"
+            else (lambda action: False),
+            on_done=self._on_task_done,
+        )
+        self.agent.attach_tasks(self.tasks)
         self._lock = threading.Lock()
 
     def say(self, text: str) -> None:
         if self.speaker is not None:
             self.speaker.say(text)
 
-    def _on_reminder(self, item: dict) -> None:
-        self.events.append({"type": "reminder", "text": item["text"], "at": item["due"]})
+    def _log(self, kind: str, text: str, at: str) -> None:
+        self.events.append({"type": kind, "text": text, "at": at})
         self.events[:] = self.events[-50:]
+
+    def _on_reminder(self, item: dict) -> None:
+        self._log("reminder", item["text"], item["due"])
         self.say(f"Напоминание: {item['text']}")
+
+    def _on_task_done(self, task) -> None:
+        if task.status == "cancelled":
+            self._log("task", f"задача «{task.title}» остановлена", f"{task.elapsed} с")
+            return
+        if task.error:
+            self._log("task", f"задача «{task.title}» сорвалась: {task.error}", f"{task.elapsed} с")
+            self.say(f"Задача «{task.title}» сорвалась.")
+        else:
+            self._log("task", f"задача «{task.title}» готова", f"{task.elapsed} с")
+            self.say(f"Задача «{task.title}» готова. {task.result}")
 
     def chat(self, message: str) -> dict:
         with self._lock:
@@ -67,6 +94,8 @@ class Backend:
             ],
             "memory": agent.memory.facts,
             "reminders": agent.reminders.pending(),
+            "tasks": [task.as_dict() for task in self.tasks.list()],
+            "max_parallel_tasks": self.config.max_parallel_tasks,
             "stats": agent.stats,
             "history_len": len(agent.history.messages),
             "events": self.events[-20:],
@@ -88,6 +117,7 @@ class Backend:
             {"name": "Синтез речи", "status": tts if tts != "none" else "не найден"},
             {"name": "Распознавание речи", "status": stt if stt != "none" else "не найден"},
             {"name": "Оболочка", "status": self.config.confirm_mode},
+            {"name": "Фоновые исполнители", "status": f"до {self.config.max_parallel_tasks} параллельно"},
         ]
 
 
@@ -164,6 +194,14 @@ def make_handler(backend: Backend):
                     return self._json({"error": str(exc)}, 400)
             if route == "/api/reminders/cancel":
                 return self._json({"ok": backend.agent.reminders.cancel(data.get("id", ""))})
+            if route == "/api/tasks":
+                try:
+                    task = backend.tasks.spawn(data.get("goal", ""), data.get("title", ""))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                return self._json(task.as_dict())
+            if route == "/api/tasks/cancel":
+                return self._json({"ok": backend.tasks.cancel(data.get("id", ""))})
             if route == "/api/reset":
                 backend.agent.reset()
                 return self._json({"ok": True})
@@ -186,4 +224,5 @@ def serve(config: Config, host: str = "127.0.0.1", port: int = 8787, open_browse
         print()
     finally:
         backend.scheduler.stop()
+        backend.tasks.shutdown()
         httpd.server_close()

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -49,6 +50,9 @@ class Memory:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.facts: list[dict] = _read(path, [])
+        # Память одна на всех: основной диалог и фоновые исполнители
+        # пишут в неё из разных потоков.
+        self._lock = threading.Lock()
 
     def add(self, text: str, tag: str = "general") -> dict:
         fact = {
@@ -57,8 +61,9 @@ class Memory:
             "tag": tag.strip() or "general",
             "created_at": time.strftime("%Y-%m-%d %H:%M"),
         }
-        self.facts.append(fact)
-        self.save()
+        with self._lock:
+            self.facts.append(fact)
+            self._save_locked()
         return fact
 
     def search(self, query: str = "", tag: str = "") -> list[dict]:
@@ -71,13 +76,18 @@ class Memory:
             result = [f for f in result if query in f["text"].lower()]
         return result
 
+    def search_all(self) -> list[dict]:
+        with self._lock:
+            return list(self.facts)
+
     def forget(self, fact_id: str) -> bool:
-        before = len(self.facts)
-        self.facts = [f for f in self.facts if f["id"] != fact_id]
-        if len(self.facts) != before:
-            self.save()
-            return True
-        return False
+        with self._lock:
+            before = len(self.facts)
+            self.facts = [f for f in self.facts if f["id"] != fact_id]
+            if len(self.facts) == before:
+                return False
+            self._save_locked()
+        return True
 
     def as_prompt(self, limit: int = 100) -> str:
         """Факты в виде куска системного промпта."""
@@ -87,6 +97,10 @@ class Memory:
         return "Что ты уже знаешь о владельце:\n" + "\n".join(lines)
 
     def save(self) -> None:
+        with self._lock:
+            self._save_locked()
+
+    def _save_locked(self) -> None:
         _write(self.path, self.facts)
 
 

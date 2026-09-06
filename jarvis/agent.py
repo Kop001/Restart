@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 from datetime import datetime
+from pathlib import Path
 
 import anthropic
 
@@ -28,12 +29,20 @@ class Agent:
         client: anthropic.Anthropic | None = None,
         confirm=None,
         say=None,
+        memory: Memory | None = None,
+        reminders: Reminders | None = None,
+        history_path: Path | None = None,
+        with_task_tools: bool = True,
+        should_stop=None,
     ) -> None:
         self.config = config
         self.client = client or anthropic.Anthropic()
-        self.memory = Memory(config.memory_file)
-        self.reminders = Reminders(config.reminders_file)
-        self.history = History(config.history_file, config.history_turns)
+        # Память и напоминания общие: фоновые исполнители получают их снаружи,
+        # чтобы всё, что узнал один, знали остальные.
+        self.memory = memory or Memory(config.memory_file)
+        self.reminders = reminders or Reminders(config.reminders_file)
+        self.history = History(history_path or config.history_file, config.history_turns)
+        self.should_stop = should_stop or (lambda: False)
         self.ctx = ToolContext(
             config=config,
             memory=self.memory,
@@ -41,7 +50,7 @@ class Agent:
             confirm=confirm or (lambda action: False),
             say=say or (lambda text: print(text)),
         )
-        self.tools = build_tools(self.ctx)
+        self.tools = build_tools(self.ctx, with_tasks=with_task_tools)
         self._extra_params_supported = True
         # Счётчики для панели «Аналитика».
         self.stats: dict[str, int] = {
@@ -97,11 +106,17 @@ class Agent:
 
         restarts = 0
         last = None
+        stopped = False
         while True:
             runner = self._runner(messages)
             for message in runner:
                 last = message
                 self._track(message)
+                if self.should_stop():
+                    # Останавливаемся на границе хода: начатый вызов
+                    # инструмента уже завершён, история цела.
+                    stopped = True
+                    break
                 # Ранер держит историю у себя и не отдаёт её наружу,
                 # поэтому ведём собственную копию — для диска и для pause_turn.
                 turn = {"role": "assistant", "content": message.content}
@@ -112,7 +127,7 @@ class Agent:
                     messages.append(tool_response)
                     new_messages.append(tool_response)
 
-            if last is None or last.stop_reason != "pause_turn":
+            if stopped or last is None or last.stop_reason != "pause_turn":
                 break
             restarts += 1
             if restarts > MAX_PAUSE_RESTARTS:
@@ -121,6 +136,8 @@ class Agent:
         self.stats["turns"] += 1
         self.history.extend(new_messages)
 
+        if stopped:
+            return "задача остановлена по требованию"
         if last is None:
             return "не получил ответа от модели"
         if last.stop_reason == "refusal":
@@ -166,6 +183,14 @@ class Agent:
         )
 
     # --- обслуживание ---
+
+    def attach_tasks(self, manager) -> None:
+        """Отдаёт агенту менеджер фоновых задач.
+
+        Инструменты читают ctx.tasks в момент вызова, поэтому пересобирать
+        их список (и ломать префиксный кэш) не нужно.
+        """
+        self.ctx.tasks = manager
 
     def reset(self) -> None:
         """Забывает текущий разговор, но не долговременную память."""
