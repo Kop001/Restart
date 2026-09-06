@@ -1,127 +1,175 @@
 <title>Джарвис</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23C2603C'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23FAF9F7'/%3E%3C/svg%3E">
 <link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400&display=swap">
 <style>
+  /* Светлая тема — основная: спокойная, тёплая, без резкого белого.
+     Тёмная повторяет её по ролям, а не выворачивает наизнанку. */
   :root{
-    /* Тёмная и только тёмная: помощник живёт на втором экране и ночью. */
-    --bg:#0b0d10; --raised:#12161b; --line:#1e242c; --line-soft:#171c22;
-    --fg:#e6ebf1; --dim:#8a97a6; --faint:#5b6672;
-    --accent:#4ddbc0; --accent-dim:#1f6b5e;
-    --warn:#f0b44a; --bad:#f2708a;
+    --bg:#faf9f7; --surface:#ffffff; --raised:#f3f0ec;
+    --line:#e7e2db; --line-soft:#f0ece6;
+    --fg:#2b2825; --dim:#6f675e; --faint:#9a9188;
+    --accent:#c2603c; --accent-soft:#f0e0d8;
+    --warn:#b4750f; --warn-bg:#fdf6e7;
     --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --serif:"Newsreader",Georgia,"Times New Roman",serif;
     --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --radius:14px;
   }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1e1c1a; --surface:#26231f; --raised:#2f2b27;
+      --line:#3a3530; --line-soft:#2c2925;
+      --fg:#ece7e0; --dim:#a89f94; --faint:#7d746a;
+      --accent:#e08356; --accent-soft:#3a2a22;
+      --warn:#d8a13f; --warn-bg:#2e2617;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1e1c1a; --surface:#26231f; --raised:#2f2b27;
+    --line:#3a3530; --line-soft:#2c2925;
+    --fg:#ece7e0; --dim:#a89f94; --faint:#7d746a;
+    --accent:#e08356; --accent-soft:#3a2a22;
+    --warn:#d8a13f; --warn-bg:#2e2617;
+  }
+
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);
-       font:15px/1.55 var(--sans);height:100vh;display:grid;
-       grid-template-columns:210px 1fr}
-  code,.mono{font-family:var(--mono);font-size:.88em}
+       font:15px/1.6 var(--sans);height:100vh;display:grid;
+       grid-template-columns:248px 1fr}
+  code,.mono{font-family:var(--mono);font-size:.86em}
 
-  /* ---- навигация ---- */
-  aside{border-right:1px solid var(--line);display:flex;flex-direction:column;
-        padding:20px 0;gap:2px}
-  .brand{padding:0 20px 18px;font-weight:600;letter-spacing:.01em}
-  .brand span{display:block;color:var(--faint);font-size:12px;font-weight:400;margin-top:2px}
-  nav{display:flex;flex-direction:column;gap:1px}
+  /* ---- боковая колонка ---- */
+  aside{background:var(--surface);border-right:1px solid var(--line-soft);
+        display:flex;flex-direction:column;padding:18px 12px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 20px}
+  .mark{width:26px;height:26px;flex:none}
+  .brand b{font-weight:600;font-size:15px;display:block;line-height:1.25}
+  .brand span{color:var(--faint);font-size:12.5px}
+  nav{display:flex;flex-direction:column;gap:2px}
   nav button{background:none;border:0;color:var(--dim);font:inherit;text-align:left;
-             padding:9px 20px;cursor:pointer;border-left:2px solid transparent}
-  nav button:hover{color:var(--fg)}
-  nav button.on{color:var(--fg);border-left-color:var(--accent);background:var(--line-soft)}
-  .foot{margin-top:auto;padding:16px 20px 0;color:var(--faint);font-size:12px;
-        border-top:1px solid var(--line-soft)}
+             padding:9px 12px;border-radius:9px;cursor:pointer}
+  nav button:hover{background:var(--raised);color:var(--fg)}
+  nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:500}
+  .foot{margin-top:auto;padding:14px 12px 2px;color:var(--faint);font-size:12px}
 
   /* ---- полотно ---- */
-  main{display:flex;flex-direction:column;min-height:0}
-  header{padding:18px 28px 12px;border-bottom:1px solid var(--line-soft)}
-  h1{font-size:17px;font-weight:600;margin:0}
-  .sub{color:var(--dim);font-size:13px;margin-top:2px}
-  .scroll{flex:1;overflow-y:auto;padding:20px 28px 28px;min-height:0}
+  main{display:flex;flex-direction:column;min-height:0;align-items:center}
+  .column{width:100%;max-width:760px;display:flex;flex-direction:column;min-height:0;flex:1}
+  header{padding:26px 8px 14px}
+  h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13.5px;margin-top:3px}
+  .scroll{flex:1;overflow-y:auto;padding:6px 8px 24px;min-height:0}
 
   /* ---- лента ---- */
-  .feed{display:flex;flex-direction:column;gap:18px;max-width:760px}
-  .said{display:flex;flex-direction:column;gap:4px}
+  .feed{display:flex;flex-direction:column;gap:22px}
+  .said{display:flex;flex-direction:column;gap:5px}
   .said .who{color:var(--faint);font-size:12px}
-  .said .body{white-space:pre-wrap}
-  .said.me{align-self:flex-end;align-items:flex-end;max-width:82%}
-  .said.me .body{background:var(--raised);border-radius:12px 12px 3px 12px;padding:9px 13px}
-  .said.ai .body{color:var(--fg)}
-  .quiet{color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:baseline}
+  .said.me{align-self:flex-end;align-items:flex-end;max-width:78%}
+  .said.me .body{background:var(--raised);border-radius:16px 16px 4px 16px;padding:10px 15px}
+  .said.ai .body{font-family:var(--serif);font-size:17px;line-height:1.7}
+  .body{white-space:pre-wrap}
+  .quiet{color:var(--dim);font-size:13.5px;display:flex;gap:12px;align-items:baseline}
   .quiet time{color:var(--faint);font-family:var(--mono);font-size:12px;flex:none}
-  .folded{color:var(--faint);font-size:13px;cursor:pointer;user-select:none}
+  .quiet button{opacity:0;transition:opacity .15s}
+  .quiet:hover button{opacity:1}
+  .folded{color:var(--faint);font-size:13px;cursor:pointer;user-select:none;
+          align-self:flex-start;padding:2px 0}
   .folded:hover{color:var(--dim)}
   .folded ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
 
-  /* ---- то, что требует внимания ---- */
-  .attention{border:1px solid var(--warn);background:#191308;border-radius:10px;
-             padding:14px 16px;margin-bottom:18px;max-width:760px}
-  .attention h3{margin:0 0 4px;font-size:13px;color:var(--warn);font-weight:600}
-  .attention .what{margin-bottom:12px;word-break:break-word}
-  .now{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-  .chip{border:1px solid var(--line);border-radius:99px;padding:3px 11px;
-        font-size:12.5px;color:var(--dim)}
-  .chip.live{border-color:var(--accent-dim);color:var(--accent)}
+  .attention{border:1px solid var(--warn);background:var(--warn-bg);
+             border-radius:var(--radius);padding:15px 17px;margin-bottom:20px}
+  .attention h3{margin:0 0 5px;font-size:13px;color:var(--warn);font-weight:600}
+  .attention .what{margin-bottom:13px;word-break:break-word}
+  .now{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .chip{border:1px solid var(--line);border-radius:99px;padding:4px 12px;
+        font-size:12.5px;color:var(--dim);background:var(--surface)}
+  .chip.live{border-color:var(--accent);color:var(--accent)}
 
   /* ---- ввод ---- */
-  .compose{border-top:1px solid var(--line);padding:14px 28px;display:flex;gap:10px;
-           align-items:flex-end}
-  textarea,input{background:var(--raised);border:1px solid var(--line);border-radius:10px;
-                 color:var(--fg);font:inherit;padding:10px 13px;width:100%;resize:none}
-  textarea:focus,input:focus{outline:none;border-color:var(--accent-dim)}
+  .compose{width:100%;max-width:760px;padding:0 8px 22px}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+       padding:12px 14px;display:flex;gap:10px;align-items:flex-end;
+       box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .box:focus-within{border-color:var(--accent)}
+  textarea{background:none;border:0;color:var(--fg);font:inherit;resize:none;
+           width:100%;max-height:180px;padding:2px 0}
+  textarea:focus{outline:none}
+  .send{width:32px;height:32px;flex:none;border:0;border-radius:9px;cursor:pointer;
+        background:var(--accent);color:#fff;font-size:16px;line-height:1}
+  .send:disabled{opacity:.35;cursor:default}
 
-  /* ---- кнопки ---- */
-  button.act{background:var(--raised);border:1px solid var(--line);color:var(--fg);
-             border-radius:9px;padding:9px 15px;cursor:pointer;font:inherit;white-space:nowrap}
-  button.act:hover{border-color:var(--accent-dim);color:var(--accent)}
-  button.act.plain{background:none;border-color:transparent;color:var(--dim);padding:5px 8px}
-  button.act.plain:hover{color:var(--bad)}
-  button.act:focus-visible,nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  input{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+        color:var(--fg);font:inherit;padding:9px 12px;width:100%}
+  input:focus{outline:none;border-color:var(--accent)}
+  button.act{background:var(--surface);border:1px solid var(--line);color:var(--fg);
+             border-radius:10px;padding:8px 14px;cursor:pointer;font:inherit;white-space:nowrap}
+  button.act:hover{border-color:var(--accent);color:var(--accent)}
+  button.act.plain{background:none;border-color:transparent;color:var(--faint);padding:4px 7px}
+  button.act.plain:hover{color:var(--accent)}
+  button:focus-visible,nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-  /* ---- разделы-справочники ---- */
-  .block{max-width:820px;margin-bottom:30px}
-  .block h2{font-size:14px;font-weight:600;margin:0 0 3px}
-  .block .hint{color:var(--dim);font-size:13px;margin-bottom:12px}
+  /* ---- справочные разделы ---- */
+  .block{margin-bottom:34px}
+  .block h2{font-size:15px;font-weight:600;margin:0 0 4px}
+  .block .hint{color:var(--dim);font-size:13.5px;margin-bottom:14px;max-width:62ch}
   table{width:100%;border-collapse:collapse;font-size:14px}
-  th{color:var(--faint);font-size:12px;font-weight:500;text-align:left;padding:0 10px 7px 0}
-  td{padding:8px 10px 8px 0;border-top:1px solid var(--line-soft);vertical-align:top}
+  th{color:var(--faint);font-size:12px;font-weight:500;text-align:left;padding:0 10px 8px 0}
+  td{padding:9px 10px 9px 0;border-top:1px solid var(--line-soft);vertical-align:top}
   td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--dim)}
   .id{font-family:var(--mono);font-size:12px;color:var(--faint)}
-  .tag{color:var(--dim);font-size:13px}
-  .mark{color:var(--warn);font-size:12px}
-  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
-  .stat b{display:block;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .tag{color:var(--dim);font-size:13.5px}
+  .mark-important{color:var(--warn);font-size:12px}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  .stat b{display:block;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;
+          letter-spacing:-.02em}
   .stat span{color:var(--dim);font-size:13px}
-  .empty{color:var(--faint);font-size:13px;padding:6px 0}
+  .empty{color:var(--faint);font-size:13.5px;padding:8px 0}
 
   .hidden{display:none!important}
-  #approve{position:fixed;inset:0;background:#000b;display:none;place-items:center;padding:20px}
-  #approve .attention{background:var(--raised);max-width:520px;margin:0}
+  #approve{position:fixed;inset:0;background:rgba(20,18,16,.45);display:none;
+           place-items:center;padding:20px}
+  #approve .attention{background:var(--surface);max-width:520px;margin:0;
+                      box-shadow:0 10px 40px rgba(0,0,0,.18)}
 
   @media (max-width:760px){
     body{grid-template-columns:1fr;grid-template-rows:1fr auto}
     aside{order:2;flex-direction:row;border-right:0;border-top:1px solid var(--line);
           padding:0;align-items:stretch}
     .brand,.foot{display:none}
-    nav{flex-direction:row;flex:1}
-    nav button{flex:1;text-align:center;border-left:0;border-top:2px solid transparent;padding:12px 4px}
-    nav button.on{border-left:0;border-top-color:var(--accent)}
+    nav{flex-direction:row;flex:1;gap:0}
+    nav button{flex:1;text-align:center;border-radius:0;padding:13px 4px}
+    nav button.on{background:none;box-shadow:inset 0 2px 0 var(--accent)}
     main{order:1;min-height:0}
-    header{padding:14px 16px 10px}
-    .scroll,.compose{padding-left:16px;padding-right:16px}
+    header{padding:18px 16px 10px}
+    .scroll{padding:4px 16px 18px}
+    .compose{padding:0 12px 12px}
   }
 </style>
 
 <aside>
-  <div class="brand">Джарвис<span id="brand-sub">на связи</span></div>
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="var(--accent)"/>
+      <circle cx="16" cy="16" r="5" fill="var(--surface)"/>
+    </svg>
+    <span><b>Джарвис</b><span id="brand-sub">на связи</span></span>
+  </div>
   <nav id="nav"></nav>
   <div class="foot" id="foot"></div>
 </aside>
 
 <main>
-  <header><h1 id="title">Разговор</h1><div class="sub" id="subtitle"></div></header>
-  <div class="scroll" id="view"></div>
+  <div class="column">
+    <header><h1 id="title">Разговор</h1><div class="sub" id="subtitle"></div></header>
+    <div class="scroll" id="view"></div>
+  </div>
   <div class="compose hidden" id="compose">
-    <textarea id="say" rows="1" placeholder="Скажите что-нибудь…"></textarea>
-    <button class="act" id="send">Отправить</button>
+    <div class="box">
+      <textarea id="say" rows="1" placeholder="Скажите что-нибудь…"></textarea>
+      <button class="send" id="send" title="Отправить">↑</button>
+    </div>
   </div>
 </main>
 
@@ -138,7 +186,7 @@
 const SECTIONS = [
   {id:'feed',   label:'Разговор', title:'Разговор', sub:'что было сказано и что случилось'},
   {id:'memory', label:'Память',   title:'Память',   sub:'что Джарвис о вас знает и где это лежит'},
-  {id:'system', label:'Система',  title:'Система',  sub:'навыки, задачи, расход'},
+  {id:'system', label:'Система',  title:'Система',  sub:'задачи, напоминания, навыки, расход'},
 ];
 
 let state = null, current = 'feed', pendingId = null, unfolded = new Set();
@@ -148,7 +196,8 @@ const el = html => {
   t.innerHTML = html.trim();
   return t.content.childElementCount === 1 ? t.content.firstElementChild : t.content;
 };
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const clock = ts => new Date(ts * 1000).toTimeString().slice(0, 5);
 
 async function api(path, body){
@@ -156,8 +205,6 @@ async function api(path, body){
                        body:JSON.stringify(body)} : {};
   return (await fetch(path, opts)).json();
 }
-
-/* ---------- каркас ---------- */
 
 function buildNav(){
   const nav = document.getElementById('nav');
@@ -180,10 +227,9 @@ function show(id){
 
 async function refresh(){
   state = await api('/api/state');
-  const c = state.config;
   document.getElementById('brand-sub').textContent =
     state.privacy.private_mode ? 'не записывает' : 'на связи';
-  document.getElementById('foot').textContent = `${c.model} · ${c.effort}`;
+  document.getElementById('foot').textContent = `${state.config.model} · ${state.config.effort}`;
   render();
 }
 
@@ -211,13 +257,11 @@ function viewFeed(view){
 
   const flush = () => {
     if (!silent.length) return;
-    const key = silent[0].id;
-    const open = unfolded.has(key);
-    const node = el(`<div class="folded" data-key="${key}">
-      ${open ? '▾' : '▸'} ${silent.length} ${plural(silent.length)}, промолчал
-      ${open ? `<ul>${silent.map(e =>
-        `<li>${clock(e.at)} · ${esc(e.text)} <span class="id">${esc(e.note)}</span></li>`
-      ).join('')}</ul>` : ''}</div>`);
+    const key = silent[0].id, open = unfolded.has(key);
+    const node = el(`<div class="folded">${open ? '▾' : '▸'} ${silent.length}
+      ${plural(silent.length)}, промолчал
+      ${open ? `<ul>${silent.map(e => `<li>${clock(e.at)} · ${esc(e.text)}
+        <span class="id">${esc(e.note)}</span></li>`).join('')}</ul>` : ''}</div>`);
     node.onclick = () => { open ? unfolded.delete(key) : unfolded.add(key); render(); };
     wrap.appendChild(node);
     silent = [];
@@ -259,15 +303,18 @@ async function send(){
   const box = document.getElementById('say');
   const text = box.value.trim();
   if (!text) return;
-  box.value = '';
-  const view = document.getElementById('view');
-  view.querySelector('.feed')?.appendChild(
-    said('me', 'Вы', {at: Date.now()/1000, text}));
-  view.querySelector('.feed')?.appendChild(
-    said('ai', 'Джарвис', {at: Date.now()/1000, text:'…'}));
+  box.value = ''; grow(box);
+  const view = document.getElementById('view'), feed = view.querySelector('.feed');
+  feed?.appendChild(said('me', 'Вы', {at: Date.now()/1000, text}));
+  feed?.appendChild(said('ai', 'Джарвис', {at: Date.now()/1000, text:'…'}));
   view.scrollTop = view.scrollHeight;
   await api('/api/chat', {message:text});
   refresh();
+}
+
+function grow(box){
+  box.style.height = 'auto';
+  box.style.height = Math.min(box.scrollHeight, 180) + 'px';
 }
 
 /* ---------- память ---------- */
@@ -279,7 +326,8 @@ function viewMemory(view){
     <div class="hint">Только действующее. Это и уходит в модель при каждой реплике.</div>
     <table><tr><th>Факт</th><th>Тема</th><th>Обращений</th><th></th></tr>
     ${state.memory.map(f => `<tr>
-      <td>${esc(f.text)}${f.importance === 'high' ? ' <span class="mark">важно</span>' : ''}</td>
+      <td>${esc(f.text)}${f.importance === 'high'
+        ? ' <span class="mark-important">важно</span>' : ''}</td>
       <td class="tag">${esc(f.tag)}</td><td class="num">${f.uses ?? 0}</td>
       <td><button class="act plain" onclick="forgetFact('${f.id}')">забыть</button></td>
     </tr>`).join('') || '<tr><td colspan="4" class="empty">Пока ничего.</td></tr>'}</table></div>
@@ -297,8 +345,8 @@ function viewMemory(view){
 
     <div class="block">
       <h2>Где это лежит</h2>
-      <div class="hint"><code>${esc(p.state_dir)}</code> — вне репозитория,
-        права только у вас. Запись на диск ${p.private_mode
+      <div class="hint"><code>${esc(p.state_dir)}</code> — вне репозитория, права только
+        у вас. Запись на диск ${p.private_mode
           ? '<b>выключена</b>: разговор не сохранится.' : 'включена.'}</div>
       <table>
         <tr><td>Переписка</td><td class="num">${p.counts.history}</td>
@@ -307,18 +355,18 @@ function viewMemory(view){
             <td><button class="act plain" onclick="wipe(['memory'])">стереть</button></td></tr>
         <tr><td>Напоминания</td><td class="num">${p.counts.reminders}</td>
             <td><button class="act plain" onclick="wipe(['reminders'])">стереть</button></td></tr>
-        <tr><td>Хроника событий</td><td class="num">${state.chronicle['всего']}</td>
-            <td></td></tr>
+        <tr><td>Хроника событий</td><td class="num">${state.chronicle['всего']}</td><td></td></tr>
       </table>
-      <div style="margin-top:14px"><button class="act" onclick="wipe()">Стереть всё</button></div></div>
+      <div style="margin-top:16px"><button class="act" onclick="wipe()">Стереть всё</button></div>
+    </div>
 
     <div class="block">
       <h2>Что уходит наружу</h2>
       <div class="hint">Из ${state.chronicle['всего']} событий модели показано
         ${state.chronicle['уходило модели']} — остальное разобрано на месте и машину
-        не покидало. При вашей реплике уходят память, недавняя переписка и
-        результаты вызванных инструментов: без этого модель не помнит разговор.
-        Звук с микрофона не уходит никогда.</div></div>`));
+        не покидало. При вашей реплике уходят память, недавняя переписка и результаты
+        вызванных навыков: без этого модель не помнит разговор. Звук с микрофона
+        не уходит никогда.</div></div>`));
 }
 
 async function forgetFact(id){ await api('/api/memory/forget', {id}); refresh(); }
@@ -333,12 +381,15 @@ async function wipe(kinds){
 
 /* ---------- система ---------- */
 
+const TASK = {queued:'в очереди', running:'выполняется', done:'готово',
+              failed:'ошибка', cancelled:'остановлена'};
+
 function viewSystem(view){
   const s = state.stats;
   view.appendChild(el(`<div class="block">
     <h2>Задачи</h2>
     <div class="hint">Одновременно работают до ${state.max_parallel_tasks}.</div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
       <input id="tg" placeholder="что сделать — своими словами, со всем контекстом">
       <button class="act" id="tadd">Запустить</button></div>
     <table><tr><th>Задача</th><th>Состояние</th><th>Время</th><th>Отчёт</th><th></th></tr>
@@ -350,7 +401,7 @@ function viewSystem(view){
     </tr>`).join('') || '<tr><td colspan="5" class="empty">Задач нет.</td></tr>'}</table></div>
 
     <div class="block"><h2>Напоминания</h2>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
       <input id="rt" placeholder="о чём напомнить">
       <input id="rw" placeholder="через 15 минут" style="max-width:220px">
       <button class="act" id="radd">Поставить</button></div>
@@ -391,9 +442,6 @@ function viewSystem(view){
   };
 }
 
-const TASK = {queued:'в очереди', running:'выполняется', done:'готово',
-              failed:'ошибка', cancelled:'остановлена'};
-
 async function cancelTask(id){ await api('/api/tasks/cancel', {id}); refresh(); }
 async function cancelReminder(id){ await api('/api/reminders/cancel', {id}); refresh(); }
 
@@ -425,8 +473,10 @@ async function resolveApproval(approved){
 buildNav();
 show('feed');
 refresh();
+const box = document.getElementById('say');
 document.getElementById('send').onclick = send;
-document.getElementById('say').addEventListener('keydown', e => {
+box.addEventListener('input', () => grow(box));
+box.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
 });
 setInterval(refresh, 4000);
