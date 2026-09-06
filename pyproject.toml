@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis"
+version = "0.1.0"
+description = "Джарвис — голосовой агент-ассистент на Claude API с инструментами, памятью и напоминаниями"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=1.4.0",
+]
+
+[project.optional-dependencies]
+# Микрофон + локальное распознавание речи
+voice = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.24",
+    "faster-whisper>=1.0.0",
+]
+# Кроссплатформенный оффлайн-синтез речи (если нет piper/say/espeak)
+tts = [
+    "pyttsx3>=2.90",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+jarvis = "jarvis.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.setuptools.package-data]
+"jarvis.dashboard" = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

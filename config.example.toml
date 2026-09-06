@@ -1,0 +1,26 @@
+# Скопируйте в ~/.config/jarvis/config.toml и правьте под себя.
+# Любой параметр можно переопределить переменной JARVIS_<ИМЯ> или флагом CLI.
+
+# --- модель ---
+model = "claude-opus-5"
+effort = "medium"        # low | medium | high | xhigh | max
+max_tokens = 8000
+thinking = true
+
+# --- поведение ---
+confirm_mode = "ask"     # ask | auto | deny
+workspace = "~"          # файловые инструменты не выходят за этот каталог
+web_search = true
+shell_allowlist = ["ls", "cat", "pwd", "date", "df", "git status", "git log"]
+
+# --- голос ---
+voice = false
+wake_word = "джарвис"
+wake_word_required = true
+stt_model = "small"      # tiny | base | small | medium | large-v3
+stt_language = "ru"
+tts_backend = "auto"     # auto | piper | say | espeak | pyttsx3 | none
+tts_voice = ""
+
+# --- диалог ---
+history_turns = 40

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS OS</title>
+<style>
+  :root{
+    --bg:#07090c; --panel:#0d1117; --panel-2:#111823; --line:#1c2733;
+    --fg:#d7e2ee; --muted:#6b7f95; --accent:#00e5c0; --accent-2:#ff4d6d; --warn:#ffb020;
+    --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 var(--mono);
+       display:grid;grid-template-columns:230px 1fr;height:100vh;overflow:hidden}
+  a{color:var(--accent)}
+  /* ---- сайдбар ---- */
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px 0}
+  .brand{padding:0 16px 14px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .brand b{color:var(--accent-2);letter-spacing:.18em;font-size:13px}
+  .brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.18em;margin-top:3px}
+  .group{color:var(--muted);font-size:9.5px;letter-spacing:.22em;padding:14px 16px 6px}
+  nav button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--fg);
+    font:inherit;padding:6px 16px;cursor:pointer;border-left:2px solid transparent}
+  nav button:hover{background:var(--panel-2)}
+  nav button.on{background:var(--panel-2);border-left-color:var(--accent);color:var(--accent)}
+  .sysline{padding:14px 16px 0;color:var(--muted);font-size:10px;border-top:1px solid var(--line);margin-top:14px}
+  /* ---- основная область ---- */
+  main{overflow-y:auto;padding:20px 26px 40px}
+  h1{font-size:15px;letter-spacing:.2em;margin:0 0 2px;text-transform:uppercase}
+  .sub{color:var(--muted);font-size:11px;margin-bottom:18px}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .card h3{margin:0 0 8px;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+  .metric{font-size:24px;color:var(--accent)}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:1px 8px;
+        font-size:10px;color:var(--muted);margin:2px 4px 2px 0}
+  .ok{color:var(--accent);border-color:#12463c}
+  .bad{color:var(--accent-2);border-color:#4a1c26}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+  button.act{background:var(--panel-2);border:1px solid var(--line);color:var(--fg);
+    border-radius:5px;padding:5px 11px;cursor:pointer;font:inherit}
+  button.act:hover{border-color:var(--accent);color:var(--accent)}
+  input,textarea{background:#060a0f;border:1px solid var(--line);border-radius:6px;color:var(--fg);
+    font:inherit;padding:9px 11px;width:100%}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:8px;align-items:center}
+  /* ---- чат ---- */
+  #log{height:calc(100vh - 210px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:6px}
+  .msg{max-width:min(760px,88%);border:1px solid var(--line);border-radius:8px;padding:9px 12px;white-space:pre-wrap}
+  .me{align-self:flex-end;background:var(--panel-2);border-color:#243447}
+  .ai{align-self:flex-start;background:var(--panel)}
+  .msg b{display:block;font-size:9.5px;letter-spacing:.18em;color:var(--muted);margin-bottom:4px}
+  /* ---- модалка подтверждения ---- */
+  #approve{position:fixed;inset:0;background:#000a;display:none;place-items:center;z-index:9}
+  #approve .card{max-width:520px;border-color:var(--warn)}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand"><b>JARVIS OS</b><small>V1 · OPERATOR MODE</small></div>
+  <div class="group">OPERATE</div>
+  <nav id="nav-operate"></nav>
+  <div class="group">INTELLIGENCE</div>
+  <nav id="nav-intel"></nav>
+  <div class="group">SYSTEM</div>
+  <nav id="nav-system"></nav>
+  <div class="sysline" id="sysline">// подключение…</div>
+</aside>
+
+<main>
+  <h1 id="title">Обзор</h1>
+  <div class="sub" id="subtitle"></div>
+  <div id="view"></div>
+</main>
+
+<div id="approve"><div class="card">
+  <h3>Требуется разрешение</h3>
+  <div id="approve-text" style="margin-bottom:14px"></div>
+  <div class="row">
+    <button class="act" onclick="resolveApproval(true)">Разрешить</button>
+    <button class="act" onclick="resolveApproval(false)">Отклонить</button>
+  </div>
+</div></div>
+
+<script>
+const SECTIONS = [
+  {id:'home',     nav:'nav-operate', label:'Обзор',        title:'Обзор',            sub:'состояние системы'},
+  {id:'comms',    nav:'nav-operate', label:'Диалог',       title:'Диалог',           sub:'разговор с Джарвисом'},
+  {id:'tasks',    nav:'nav-operate', label:'Задачи',       title:'Задачи',           sub:'напоминания и сроки'},
+  {id:'skills',   nav:'nav-intel',   label:'Навыки',       title:'Навыки',           sub:'инструменты, доступные модели'},
+  {id:'core',     nav:'nav-intel',   label:'Ядро знаний',  title:'Ядро знаний',      sub:'долговременная память'},
+  {id:'conn',     nav:'nav-system',  label:'Подключения',  title:'Подключения',      sub:'что доступно этой сборке'},
+  {id:'stats',    nav:'nav-system',  label:'Аналитика',    title:'Аналитика',        sub:'расход токенов и вызовы'},
+];
+
+let state = null, current = 'home', chatLog = [], pendingId = null;
+
+function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
+function esc(s){ return String(s??'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function buildNav(){
+  for (const s of SECTIONS){
+    const b = el(`<button data-id="${s.id}">${s.label}</button>`);
+    b.onclick = () => show(s.id);
+    document.getElementById(s.nav).appendChild(b);
+  }
+}
+
+function show(id){
+  current = id;
+  const meta = SECTIONS.find(s=>s.id===id);
+  document.getElementById('title').textContent = meta.title;
+  document.getElementById('subtitle').textContent = '// ' + meta.sub;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.id===id));
+  render();
+}
+
+async function api(path, body){
+  const opts = body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {};
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+async function refresh(){
+  state = await api('/api/state');
+  const c = state.config;
+  document.getElementById('sysline').textContent =
+    `// ${c.model}\n// effort: ${c.effort}\n// голос: ${c.voice?'вкл':'выкл'}`;
+  if (current !== 'comms') render();
+}
+
+function render(){
+  const view = document.getElementById('view');
+  if (!state){ view.innerHTML = '<div class="card">Загрузка…</div>'; return; }
+  view.innerHTML = '';
+  ({home:viewHome, comms:viewComms, tasks:viewTasks, skills:viewSkills,
+    core:viewCore, conn:viewConn, stats:viewStats})[current](view);
+}
+
+/* ---------- разделы ---------- */
+
+function viewHome(view){
+  const s = state.stats, c = state.config;
+  view.appendChild(el(`<div class="grid">
+    <div class="card"><h3>Модель</h3><div>${esc(c.model)}</div>
+      <div style="color:var(--muted)">effort: ${esc(c.effort)}</div></div>
+    <div class="card"><h3>Фактов в памяти</h3><div class="metric">${state.memory.length}</div></div>
+    <div class="card"><h3>Активных задач</h3><div class="metric">${state.reminders.length}</div></div>
+    <div class="card"><h3>Навыков</h3><div class="metric">${state.skills.length}</div></div>
+    <div class="card"><h3>Ходов диалога</h3><div class="metric">${s.turns}</div></div>
+    <div class="card"><h3>Рабочий каталог</h3><div style="word-break:break-all">${esc(c.workspace)}</div>
+      <div style="color:var(--muted)">подтверждения: ${esc(c.confirm_mode)}</div></div>
+  </div>`));
+  if (state.events.length){
+    view.appendChild(el(`<div class="card" style="margin-top:12px"><h3>Последние события</h3>
+      ${state.events.map(e=>`<div>· ${esc(e.at)} — ${esc(e.text)}</div>`).join('')}</div>`));
+  }
+}
+
+function viewComms(view){
+  view.appendChild(el(`<div id="log"></div>
+    <div class="row" style="margin-top:12px">
+      <input id="say" placeholder="Скажите Джарвису…" autocomplete="off">
+      <button class="act" id="send">Отправить</button>
+      <button class="act" id="reset">Сброс</button>
+    </div>`));
+  const log = document.getElementById('log');
+  for (const m of chatLog) log.appendChild(bubble(m.role, m.text));
+  log.scrollTop = log.scrollHeight;
+  document.getElementById('send').onclick = send;
+  document.getElementById('reset').onclick = async () => {
+    await api('/api/reset', {}); chatLog = []; render();
+  };
+  const input = document.getElementById('say');
+  input.onkeydown = e => { if (e.key === 'Enter') send(); };
+  input.focus();
+}
+
+function bubble(role, text){
+  return el(`<div class="msg ${role==='me'?'me':'ai'}"><b>${role==='me'?'ВЫ':'ДЖАРВИС'}</b>${esc(text)}</div>`);
+}
+
+async function send(){
+  const input = document.getElementById('say');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const log = document.getElementById('log');
+  chatLog.push({role:'me', text}); log.appendChild(bubble('me', text));
+  const wait = bubble('ai', '…'); log.appendChild(wait); log.scrollTop = log.scrollHeight;
+  const res = await api('/api/chat', {message:text});
+  const answer = res.answer || res.error || 'нет ответа';
+  wait.remove();
+  chatLog.push({role:'ai', text:answer}); log.appendChild(bubble('ai', answer));
+  log.scrollTop = log.scrollHeight;
+  refresh();
+}
+
+function viewTasks(view){
+  const rows = state.reminders.map(r=>`<tr><td>${esc(r.due)}</td><td>${esc(r.text)}</td>
+    <td><button class="act" onclick="cancelReminder('${r.id}')">отменить</button></td></tr>`).join('');
+  view.appendChild(el(`<div class="card">
+    <table><tr><th>Срок</th><th>Задача</th><th></th></tr>
+      ${rows || '<tr><td colspan="3" style="color:var(--muted)">пусто</td></tr>'}</table></div>
+    <div class="card" style="margin-top:12px"><h3>Новая задача</h3>
+      <div class="row"><input id="rt" placeholder="что сделать">
+        <input id="rw" placeholder="через 15 минут / в 18:30" style="max-width:260px">
+        <button class="act" id="radd">+</button></div></div>`));
+  document.getElementById('radd').onclick = async () => {
+    const res = await api('/api/reminders',
+      {text:document.getElementById('rt').value, when:document.getElementById('rw').value});
+    if (res.error) alert(res.error);
+    refresh();
+  };
+}
+
+async function cancelReminder(id){ await api('/api/reminders/cancel', {id}); refresh(); }
+
+function viewSkills(view){
+  view.appendChild(el(`<div class="grid">${state.skills.map(s=>`
+    <div class="card"><h3>${esc(s.name)}</h3>
+      <div style="color:var(--muted)">${esc(s.description || 'серверный инструмент Anthropic')}</div>
+      <span class="pill ${s.kind==='local'?'ok':''}">${s.kind==='local'?'локальный':'серверный'}</span>
+    </div>`).join('')}</div>`));
+}
+
+function viewCore(view){
+  view.appendChild(el(`<div class="card"><h3>Граф знаний</h3>
+    <div id="graph" style="min-height:420px"></div></div>
+    <div class="card" style="margin-top:12px"><h3>Факты</h3>
+      <div class="row" style="margin-bottom:10px">
+        <input id="ft" placeholder="новый факт"><input id="fg" placeholder="тег" style="max-width:160px">
+        <button class="act" id="fadd">+</button></div>
+      <table><tr><th>id</th><th>Тег</th><th>Факт</th><th></th></tr>
+      ${state.memory.map(f=>`<tr><td>${esc(f.id)}</td><td>${esc(f.tag)}</td><td>${esc(f.text)}</td>
+        <td><button class="act" onclick="forgetFact('${f.id}')">забыть</button></td></tr>`).join('')
+        || '<tr><td colspan="4" style="color:var(--muted)">память пуста</td></tr>'}</table></div>`));
+  document.getElementById('fadd').onclick = async () => {
+    await api('/api/memory', {text:document.getElementById('ft').value,
+                              tag:document.getElementById('fg').value || 'general'});
+    refresh();
+  };
+  drawGraph(document.getElementById('graph'));
+}
+
+async function forgetFact(id){ await api('/api/memory/forget', {id}); refresh(); }
+
+/* Радиальный граф: центр — Джарвис, кольцо — теги, внешние узлы — факты. */
+function drawGraph(host){
+  const W = host.clientWidth || 900, H = 440, cx = W/2, cy = H/2;
+  const tags = {};
+  for (const f of state.memory) (tags[f.tag] ||= []).push(f);
+  const names = Object.keys(tags);
+  const parts = [`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">`];
+  if (!names.length){
+    parts.push(`<text x="${cx}" y="${cy}" fill="#6b7f95" text-anchor="middle"
+      font-size="12">память пуста — Джарвис заполнит её сам через remember_fact</text>`);
+  }
+  names.forEach((name, i) => {
+    const a = (i / names.length) * Math.PI * 2 - Math.PI/2;
+    const tx = cx + Math.cos(a) * 150, ty = cy + Math.sin(a) * 130;
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${tx}" y2="${ty}" stroke="#1c2733"/>`);
+    tags[name].forEach((f, j, arr) => {
+      const spread = (j - (arr.length - 1) / 2) * 0.28;
+      const fx = cx + Math.cos(a + spread) * 210, fy = cy + Math.sin(a + spread) * 190;
+      parts.push(`<line x1="${tx}" y1="${ty}" x2="${fx}" y2="${fy}" stroke="#152029" stroke-dasharray="2 3"/>`);
+      parts.push(`<circle cx="${fx}" cy="${fy}" r="4" fill="#0d1117" stroke="#00e5c0"/>`);
+      parts.push(`<text x="${fx}" y="${fy - 9}" fill="#6b7f95" font-size="9"
+        text-anchor="middle">${esc(f.text.slice(0, 26))}</text>`);
+    });
+    parts.push(`<circle cx="${tx}" cy="${ty}" r="7" fill="#111823" stroke="#ff4d6d"/>`);
+    parts.push(`<text x="${tx}" y="${ty - 13}" fill="#d7e2ee" font-size="10"
+      text-anchor="middle">${esc(name)}</text>`);
+  });
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="16" fill="#0d1117" stroke="#00e5c0" stroke-width="2"/>`);
+  parts.push(`<text x="${cx}" y="${cy + 34}" fill="#00e5c0" font-size="10"
+    text-anchor="middle" letter-spacing="2">JARVIS</text></svg>`);
+  host.innerHTML = parts.join('');
+}
+
+function viewConn(view){
+  view.appendChild(el(`<div class="grid">${state.connections.map(c=>`
+    <div class="card"><h3>${esc(c.name)}</h3>
+      <span class="pill ${/ok|say|espeak|piper|pyttsx3|faster/.test(c.status)?'ok':'bad'}">${esc(c.status)}</span>
+    </div>`).join('')}</div>`));
+}
+
+function viewStats(view){
+  const s = state.stats;
+  view.appendChild(el(`<div class="grid">
+    <div class="card"><h3>Ходов</h3><div class="metric">${s.turns}</div></div>
+    <div class="card"><h3>Запросов к API</h3><div class="metric">${s.requests}</div></div>
+    <div class="card"><h3>Вызовов инструментов</h3><div class="metric">${s.tool_calls}</div></div>
+    <div class="card"><h3>Входных токенов</h3><div class="metric">${s.input_tokens}</div></div>
+    <div class="card"><h3>Выходных токенов</h3><div class="metric">${s.output_tokens}</div></div>
+    <div class="card"><h3>Прочитано из кэша</h3><div class="metric">${s.cache_read_tokens}</div>
+      <div style="color:var(--muted)">чем больше, тем дешевле</div></div>
+  </div>`));
+}
+
+/* ---------- подтверждения опасных действий ---------- */
+
+async function pollApprovals(){
+  const res = await api('/api/pending');
+  const box = document.getElementById('approve');
+  const item = (res.pending || [])[0];
+  if (item){
+    pendingId = item.id;
+    document.getElementById('approve-text').textContent = item.action;
+    box.style.display = 'grid';
+  } else {
+    pendingId = null;
+    box.style.display = 'none';
+  }
+}
+
+async function resolveApproval(approved){
+  if (!pendingId) return;
+  await api('/api/approve', {id:pendingId, approved});
+  document.getElementById('approve').style.display = 'none';
+}
+
+buildNav();
+show('home');
+refresh();
+setInterval(refresh, 5000);
+setInterval(pollApprovals, 1000);
+</script>
+</body>
+</html>
