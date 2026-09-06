@@ -132,6 +132,12 @@ class Backend:
             "chronicle": self.log.survey(),
         }
 
+    def graph(self) -> dict:
+        """Память как граф: узлы и связи между ними."""
+        from ..graph import build
+
+        return build(self.agent.memory.search_all())
+
     def privacy(self) -> dict:
         """Что Джарвис хранит о владельце и где."""
         from ..privacy import survey
@@ -236,6 +242,8 @@ def make_handler(backend: Backend):
                 )
             elif route == "/api/state":
                 self._json(backend.state())
+            elif route == "/api/graph":
+                self._json(backend.graph())
             elif route == "/api/pending":
                 self._json({"pending": backend.approvals.pending()})
             else:

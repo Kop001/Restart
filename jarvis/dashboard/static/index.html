@@ -127,6 +127,20 @@
   .stat span{color:var(--dim);font-size:13px}
   .empty{color:var(--faint);font-size:13.5px;padding:8px 0}
 
+  /* ---- карта памяти ---- */
+  .canvas-wrap{position:relative;background:var(--surface);border:1px solid var(--line);
+               border-radius:var(--radius);height:min(62vh,540px);overflow:hidden}
+  .canvas-wrap canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  .canvas-wrap canvas.held{cursor:grabbing}
+  .tip{position:absolute;max-width:270px;background:var(--surface);border:1px solid var(--line);
+       border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.45;
+       pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.16)}
+  .tip span{display:block;color:var(--faint);font-size:12px;margin-top:5px}
+  .legend{display:flex;gap:7px 18px;flex-wrap:wrap;margin-top:13px;
+          color:var(--dim);font-size:12.5px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:99px;
+            margin-right:6px;font-style:normal;vertical-align:baseline}
+
   .hidden{display:none!important}
   #approve{position:fixed;inset:0;background:rgba(20,18,16,.45);display:none;
            place-items:center;padding:20px}
@@ -186,6 +200,7 @@
 const SECTIONS = [
   {id:'feed',   label:'Разговор', title:'Разговор', sub:'что было сказано и что случилось'},
   {id:'memory', label:'Память',   title:'Память',   sub:'что Джарвис о вас знает и где это лежит'},
+  {id:'graph',  label:'Карта',    title:'Карта памяти', sub:'что с чем связано на самом деле'},
   {id:'system', label:'Система',  title:'Система',  sub:'задачи, напоминания, навыки, расход'},
 ];
 
@@ -237,8 +252,11 @@ function render(){
   const view = document.getElementById('view');
   if (!state){ view.innerHTML = '<div class="empty">Загрузка…</div>'; return; }
   const keep = view.scrollTop, atEnd = view.scrollHeight - view.clientHeight - keep < 60;
+  // Холст графа живёт своей жизнью: пересобрать его — значит уронить раскладку,
+  // над которой он только что работал. Обновляем данные, а не разметку.
+  if (current === 'graph' && view.querySelector('canvas')) return void loadGraph();
   view.innerHTML = '';
-  ({feed:viewFeed, memory:viewMemory, system:viewSystem})[current](view);
+  ({feed:viewFeed, memory:viewMemory, graph:viewGraph, system:viewSystem})[current](view);
   view.scrollTop = current === 'feed' && atEnd ? view.scrollHeight : keep;
 }
 
@@ -377,6 +395,255 @@ async function wipe(kinds){
   const res = await api('/api/wipe', kinds ? {kinds} : {});
   alert(res.report || res.error);
   refresh();
+}
+
+/* ---------- карта памяти ---------- */
+
+/* Раскладку никто не задаёт руками: узлы расталкиваются, связи стягивают.
+   Где получилось плотно — там память действительно связана. */
+
+let graph = null, canvas = null, ctx = null, tip = null;
+let graphAnim = 0, graphAt = 0, alpha = 1, held = null, hover = null;
+
+const HUES = [16, 38, 92, 168, 205, 258, 322];
+const hueOf = tag => HUES[Math.abs([...String(tag)]
+  .reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % HUES.length];
+const dark = () => matchMedia('(prefers-color-scheme: dark)').matches
+  && document.documentElement.dataset.theme !== 'light';
+const tone = (tag, alpha = 1) =>
+  `hsl(${hueOf(tag)} 48% ${dark() ? 62 : 46}% / ${alpha})`;
+
+// Свечение честное: гаснет за две недели без обращений. Факт, к которому
+// не обращались никогда, не светится вовсе.
+const freshness = node => {
+  if (!node.last_used) return 0;
+  const days = (Date.now() - Date.parse(node.last_used.replace(' ', 'T'))) / 86400000;
+  return Math.max(0, Math.min(1, 1 - days / 14));
+};
+
+function viewGraph(view){
+  view.appendChild(el(`<div class="block">
+    <div class="hint">Кружок — факт, крупный узел — тема. Размер по числу обращений,
+      свечение — насколько недавно факт понадобился. Тонкая линия — принадлежность
+      теме, цветная — общие слова с фактом из другой темы, пунктир — замена.
+      Заменённое приглушено. Наведите или коснитесь узла, чтобы прочитать;
+      его можно оттащить.</div>
+    <div class="canvas-wrap"><canvas></canvas><div class="tip hidden"></div></div>
+    <div class="legend"></div></div>`));
+  canvas = view.querySelector('canvas');
+  ctx = canvas.getContext('2d');
+  tip = view.querySelector('.tip');
+  bindGraph();
+  loadGraph(true);
+  if (!graphAnim) graphAnim = requestAnimationFrame(frame);
+}
+
+async function loadGraph(force){
+  if (!canvas || (!force && Date.now() - graphAt < 15000)) return;
+  graphAt = Date.now();
+  merge(await api('/api/graph'));
+}
+
+function merge(data){
+  const was = new Map((graph?.nodes || []).map(n => [n.id, n]));
+  const byId = new Map();
+  const w = canvas.clientWidth || 600, h = canvas.clientHeight || 400;
+  const nodes = data.nodes.map(raw => {
+    const old = was.get(raw.id);
+    // Новый узел появляется где придётся: место ему найдут силы, а не мы.
+    const node = Object.assign({
+      x: old ? old.x : w / 2 + (Math.random() - .5) * w * .55,
+      y: old ? old.y : h / 2 + (Math.random() - .5) * h * .55,
+      vx: 0, vy: 0}, raw);
+    node.r = raw.kind === 'тема' ? 7 + Math.sqrt(raw.weight) * 2.6
+                                 : 4 + Math.sqrt(raw.weight) * 1.9;
+    byId.set(node.id, node);
+    return node;
+  });
+  const links = data.links
+    .filter(l => byId.has(l.from) && byId.has(l.to))
+    .map(l => ({kind: l.kind, weight: l.weight, a: byId.get(l.from), b: byId.get(l.to)}));
+  graph = {nodes, links, byId};
+  alpha = 1;
+  legend();
+}
+
+function legend(){
+  const box = document.querySelector('.legend');
+  if (!box) return;
+  const tags = graph.nodes.filter(n => n.kind === 'тема')
+    .sort((a, b) => b.weight - a.weight);
+  box.innerHTML = tags.map(t =>
+    `<span><i style="background:${tone(t.text)}"></i>${esc(t.text)} · ${t.weight}</span>`
+  ).join('') || '<span>Тем пока нет.</span>';
+}
+
+function frame(){
+  graphAnim = 0;
+  if (current !== 'graph' || !canvas || !canvas.isConnected) return;
+  if (graph){ tick(); draw(); }
+  graphAnim = requestAnimationFrame(frame);
+}
+
+function tick(){
+  const w = canvas.clientWidth, h = canvas.clientHeight, cx = w / 2, cy = h / 2;
+  const nodes = graph.nodes;
+  for (const n of nodes){ n.vx *= .86; n.vy *= .86; }
+
+  for (let i = 0; i < nodes.length; i++){
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++){
+      const b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+      if (d2 > 90000) continue;               // дальше 300 px друг друга не чувствуют
+      if (d2 < 1){ dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+      const d = Math.sqrt(d2), f = 1900 / d2;
+      a.vx -= dx / d * f; a.vy -= dy / d * f;
+      b.vx += dx / d * f; b.vy += dy / d * f;
+    }
+    a.vx += (cx - a.x) * .0015; a.vy += (cy - a.y) * .0015;
+  }
+
+  for (const l of graph.links){
+    const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || .01;
+    const rest = l.kind === 'тема' ? 84 : l.kind === 'замена' ? 44 : 150;
+    const k = l.kind === 'тема' ? .020 : l.kind === 'замена' ? .030 : .008;
+    const f = (d - rest) * k;
+    l.a.vx += dx / d * f; l.a.vy += dy / d * f;
+    l.b.vx -= dx / d * f; l.b.vy -= dy / d * f;
+  }
+
+  for (const n of nodes){
+    if (n === held) continue;
+    n.x += n.vx * alpha; n.y += n.vy * alpha;
+    n.x = Math.max(n.r + 6, Math.min(w - n.r - 6, n.x));
+    n.y = Math.max(n.r + 6, Math.min(h - n.r - 6, n.y));
+  }
+  // Ниже нуля не опускаем: остывший граф застывает намертво и не отзывается
+  // на новый факт, пока его не тронешь.
+  alpha = Math.max(.22, alpha * .995);
+}
+
+function draw(){
+  const w = canvas.clientWidth, h = canvas.clientHeight, dpr = devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)){
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  if (!graph.nodes.length){
+    ctx.fillStyle = css('--faint'); ctx.font = '14px ' + css('--sans');
+    ctx.textAlign = 'center';
+    ctx.fillText('Память пуста — связывать пока нечего.', w / 2, h / 2);
+    return;
+  }
+
+  const lit = hover ? near(hover) : null;
+  const soft = id => !lit || lit.has(id);
+
+  for (const l of graph.links){
+    const on = soft(l.a.id) && soft(l.b.id);
+    const faded = l.a.stale || l.b.stale;
+    ctx.setLineDash(l.kind === 'замена' ? [3, 4] : []);
+    ctx.lineWidth = l.kind === 'родство' ? Math.min(2.2, .7 + l.weight * .35) : 1;
+    ctx.strokeStyle = l.kind === 'родство'
+      ? tone(l.a.kind === 'тема' ? l.a.text : l.a.tag, on ? (faded ? .18 : .42) : .07)
+      : css('--line', on ? (faded ? .5 : 1) : .25);
+    ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  for (const n of graph.nodes){
+    const on = soft(n.id), dim = n.stale ? .28 : 1;
+    const glow = freshness(n) * (n.stale ? 0 : 1);
+    if (glow > .02 && on){
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 5 + glow * 7, 0, 7);
+      ctx.fillStyle = tone(n.kind === 'тема' ? n.text : n.tag, glow * .17);
+      ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7);
+    ctx.fillStyle = n.kind === 'тема'
+      ? tone(n.text, (on ? .9 : .25) * dim)
+      : tone(n.tag, (on ? .28 + glow * .5 : .12) * dim);
+    ctx.fill();
+    ctx.lineWidth = n.importance === 'high' ? 2 : 1;
+    ctx.strokeStyle = tone(n.kind === 'тема' ? n.text : n.tag, (on ? .85 : .2) * dim);
+    ctx.stroke();
+  }
+
+  ctx.font = '11.5px ' + css('--sans');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (const n of graph.nodes){
+    if (n.kind !== 'тема') continue;
+    ctx.fillStyle = css('--dim', soft(n.id) ? 1 : .3);
+    ctx.fillText(n.text, n.x, n.y + n.r + 5);
+  }
+}
+
+const css = (name, alpha = 1) => {
+  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+  return alpha === 1 ? value : `color-mix(in srgb, ${value} ${Math.round(alpha * 100)}%, transparent)`;
+};
+
+function near(node){
+  const set = new Set([node.id]);
+  for (const l of graph.links){
+    if (l.a.id === node.id) set.add(l.b.id);
+    if (l.b.id === node.id) set.add(l.a.id);
+  }
+  return set;
+}
+
+function at(x, y){
+  let best = null, bestD = 1e9;
+  for (const n of graph?.nodes || []){
+    const d = Math.hypot(n.x - x, n.y - y);
+    if (d < n.r + 7 && d < bestD){ best = n; bestD = d; }
+  }
+  return best;
+}
+
+function bindGraph(){
+  const spot = event => {
+    const box = canvas.getBoundingClientRect();
+    return [event.clientX - box.left, event.clientY - box.top];
+  };
+
+  canvas.onpointerdown = event => {
+    const [x, y] = spot(event);
+    held = at(x, y);
+    if (!held) return;
+    canvas.setPointerCapture(event.pointerId);
+    canvas.classList.add('held');
+    alpha = 1;
+  };
+
+  canvas.onpointermove = event => {
+    const [x, y] = spot(event);
+    if (held){ held.x = x; held.y = y; held.vx = held.vy = 0; alpha = 1; }
+    // На телефоне наведения нет: палец сразу хватает узел, и подпись
+    // должна появиться всё равно — иначе прочитать факт нечем.
+    const found = held || at(x, y);
+    hover = found;
+    if (!found) return void tip.classList.add('hidden');
+    tip.classList.remove('hidden');
+    tip.innerHTML = found.kind === 'тема'
+      ? `<b>Тема «${esc(found.text)}»</b><span>${found.weight} действующих фактов</span>`
+      : `${esc(found.text)}<span>${esc(found.tag)} · обращений ${found.weight}
+         ${found.last_used ? '· последнее ' + esc(found.last_used) : '· ни разу не пригодился'}
+         ${found.stale ? '· заменён' : ''}</span>`;
+    // Подсказка не должна вылезать за холст: у нижнего края она переезжает вверх.
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const below = y + 16 + tip.offsetHeight < h - 6;
+    tip.style.left = Math.max(6, Math.min(w - tip.offsetWidth - 6, x + 14)) + 'px';
+    tip.style.top = Math.max(6, below ? y + 16 : y - tip.offsetHeight - 14) + 'px';
+  };
+
+  const release = () => { held = null; canvas.classList.remove('held'); };
+  canvas.onpointerup = release;
+  canvas.onpointercancel = release;
+  canvas.onpointerleave = () => { release(); hover = null; tip.classList.add('hidden'); };
 }
 
 /* ---------- система ---------- */

@@ -114,6 +114,7 @@ class Memory:
                 "created_at": time.strftime("%Y-%m-%d %H:%M"),
                 "source": source,
                 "uses": 0,
+                "last_used": None,
                 "superseded_by": None,
                 "superseded_at": None,
             }
@@ -171,8 +172,10 @@ class Memory:
             found = [f for weight, f in sorted(weighted, key=lambda p: -p[0]) if weight]
 
             if count and found:
+                stamp = time.strftime("%Y-%m-%d %H:%M")
                 for fact in found:
                     fact["uses"] += 1
+                    fact["last_used"] = stamp
                 self._save_locked()
             return found
 
@@ -247,6 +250,7 @@ DEFAULTS = {
     "superseded_by": None,
     "superseded_at": None,
     "source": "диалог",
+    "last_used": None,
 }
 
 
