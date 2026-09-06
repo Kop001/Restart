@@ -14,6 +14,8 @@ import time
 import uuid
 from pathlib import Path
 
+from .morph import score
+
 
 def to_plain(value):
     """Разворачивает объекты SDK (pydantic-модели) в обычные dict/list.
@@ -88,6 +90,7 @@ class Memory:
         tag: str = "general",
         replaces: str = "",
         importance: str = "normal",
+        source: str = "диалог",
     ) -> dict:
         """Записывает факт, при необходимости заменяя устаревший.
 
@@ -109,6 +112,7 @@ class Memory:
                 "tag": (tag.strip() or "general"),
                 "importance": importance if importance in IMPORTANCE else "normal",
                 "created_at": time.strftime("%Y-%m-%d %H:%M"),
+                "source": source,
                 "uses": 0,
                 "superseded_by": None,
                 "superseded_at": None,
@@ -148,22 +152,38 @@ class Memory:
         include_stale: bool = False,
         count: bool = False,
     ) -> list[dict]:
-        """Ищет факты. `count` отмечает, что они пригодились."""
-        query = query.lower().strip()
+        """Ищет факты по смыслу слов. `count` отмечает, что они пригодились.
+
+        Сравниваем основы, а не буквы: записано «место работы», спросили
+        «где я работаю» — должно найтись. Ответ отсортирован: сначала то,
+        где совпало больше слов.
+        """
+        query = query.strip()
         tag = tag.lower().strip()
 
         with self._lock:
-            found = [
+            candidates = [
                 f for f in self.facts
                 if (include_stale or not f["superseded_by"])
                 and (not tag or f["tag"].lower() == tag)
-                and (not query or query in f["text"].lower())
             ]
+            weighted = [(score(query, f["text"] + " " + f["tag"]), f) for f in candidates]
+            found = [f for weight, f in sorted(weighted, key=lambda p: -p[0]) if weight]
+
             if count and found:
                 for fact in found:
                     fact["uses"] += 1
                 self._save_locked()
-            return list(found)
+            return found
+
+    def similar(self, text: str, tag: str = "", limit: int = 3) -> list[dict]:
+        """Действующие факты, похожие на новый.
+
+        Нужна при записи: если новое сведение отменяет старое, Джарвис должен
+        это заметить — а не заметив, оставит в памяти два противоречащих.
+        """
+        found = [f for f in self.search(text, tag) if _key(f["text"]) != _key(text)]
+        return found[:limit]
 
     def search_all(self) -> list[dict]:
         with self._lock:
@@ -221,7 +241,13 @@ IMPORTANCE = ("low", "normal", "high")
 
 # Поля, которых не было в первой версии памяти. Старые файлы читаются как есть,
 # недостающее добирается значениями по умолчанию.
-DEFAULTS = {"importance": "normal", "uses": 0, "superseded_by": None, "superseded_at": None}
+DEFAULTS = {
+    "importance": "normal",
+    "uses": 0,
+    "superseded_by": None,
+    "superseded_at": None,
+    "source": "диалог",
+}
 
 
 def _upgrade(fact: dict) -> dict:

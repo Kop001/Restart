@@ -34,6 +34,7 @@ class Agent:
         history_path: Path | None = None,
         with_task_tools: bool = True,
         should_stop=None,
+        source: str = "диалог",
     ) -> None:
         self.config = config
         self.client = client or anthropic.Anthropic()
@@ -52,6 +53,7 @@ class Agent:
             reminders=self.reminders,
             confirm=confirm or (lambda action: False),
             say=say or (lambda text: print(text)),
+            source=source,
         )
         self.tools = build_tools(self.ctx, with_tasks=with_task_tools)
         self._extra_params_supported = True

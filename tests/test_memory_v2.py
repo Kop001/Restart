@@ -198,3 +198,83 @@ def test_recall_marks_important_and_retired(tools):
 
     assert "!важно" in named["recall_facts"].call({"query": "аллергия"})
     assert "заменён на" in named["recall_facts"].call({"query": "старое", "include_stale": True})
+
+
+# --- поиск по смыслу слов ---
+
+def test_search_finds_across_word_forms(memory):
+    memory.add("место работы — такая-то компания", "work")
+
+    assert memory.search("где я работаю")
+    assert memory.search("работа")
+
+
+def test_search_ranks_by_number_of_matching_words(memory):
+    memory.add("релизы по четвергам", "schedule")
+    memory.add("четверг — короткий день", "schedule")
+
+    found = memory.search("релиз четверг")
+
+    assert found[0]["text"] == "релизы по четвергам", "сначала то, где совпало больше"
+
+
+def test_search_by_tag_alone_returns_the_whole_tag(memory):
+    memory.add("первое", "work")
+    memory.add("второе", "work")
+    memory.add("третье", "personal")
+
+    assert len(memory.search(tag="work")) == 2
+
+
+# --- подсказка о противоречии ---
+
+def test_similar_finds_related_but_not_the_same(memory):
+    memory.add("релизы по четвергам", "schedule")
+
+    similar = memory.similar("релизы по вторникам", "schedule")
+
+    assert [f["text"] for f in similar] == ["релизы по четвергам"]
+
+
+def test_similar_ignores_exact_repetition(memory):
+    memory.add("релизы по четвергам", "schedule")
+    assert memory.similar("релизы по четвергам", "schedule") == []
+
+
+def test_tool_warns_about_possible_contradiction(tools):
+    named, memory = tools
+    old = memory.add("релизы по четвергам", "schedule")
+
+    result = named["remember_fact"].call({"text": "релизы по вторникам", "tag": "schedule"})
+
+    assert "Похоже на то, что уже знаю" in result
+    assert old["id"] in result
+    assert "replaces" in result
+
+
+def test_tool_stays_quiet_when_replacement_is_explicit(tools):
+    named, memory = tools
+    old = memory.add("релизы по четвергам", "schedule")
+
+    result = named["remember_fact"].call(
+        {"text": "релизы по вторникам", "tag": "schedule", "replaces": old["id"]}
+    )
+
+    assert "Похоже" not in result
+
+
+# --- источник факта ---
+
+def test_fact_records_where_it_came_from(tools):
+    named, memory = tools
+    named["remember_fact"].call({"text": "новое сведение", "tag": "general"})
+
+    assert memory.active()[0]["source"] == "диалог"
+
+
+def test_old_facts_get_a_source_by_default(memory):
+    memory.facts.append({"id": "old00001", "text": "давний", "tag": "work",
+                         "created_at": "2026-01-01 10:00"})
+    from jarvis.memory import _upgrade
+
+    assert _upgrade(memory.facts[-1])["source"] == "диалог"

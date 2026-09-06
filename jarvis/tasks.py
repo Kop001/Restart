@@ -196,6 +196,7 @@ class TaskManager:
                 history_path=history_path,
                 with_task_tools=False,
                 should_stop=lambda: self._should_stop(task.id),
+                source="фоновая задача",
             )
             task.result = agent.ask(task.goal)
             task.stats = dict(agent.stats)

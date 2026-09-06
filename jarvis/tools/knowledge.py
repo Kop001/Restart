@@ -37,9 +37,23 @@ def register(ctx: ToolContext) -> list:
         if known is not None:
             return f"уже помню это: [{known['id']}] {known['text']}"
 
-        fact = ctx.memory.add(text, tag, replaces=replaces, importance=importance)
-        note = f", заменил {replaces}" if replaces else ""
-        return f"запомнил [{fact['id']}]: {fact['text']}{note}"
+        similar = [] if replaces else ctx.memory.similar(text, tag)
+        fact = ctx.memory.add(
+            text, tag, replaces=replaces, importance=importance, source=ctx.source
+        )
+
+        if replaces:
+            return f"запомнил [{fact['id']}]: {fact['text']}, заменил {replaces}"
+        if similar:
+            listed = "; ".join(f"[{f['id']}] {f['text']}" for f in similar)
+            return (
+                f"запомнил [{fact['id']}]: {fact['text']}.\n"
+                f"Похоже на то, что уже знаю: {listed}. "
+                f"Если новое сведение отменяет старое — запиши его ещё раз, "
+                f"указав replaces с нужным идентификатором, иначе в памяти "
+                f"останутся два противоречащих факта."
+            )
+        return f"запомнил [{fact['id']}]: {fact['text']}"
 
     @beta_tool
     @guard
