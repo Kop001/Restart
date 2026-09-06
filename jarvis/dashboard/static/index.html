@@ -80,7 +80,7 @@
 </main>
 
 <div id="approve"><div class="card">
-  <h3>Требуется разрешение</h3>
+  <h3 id="approve-who">Требуется разрешение</h3>
   <div id="approve-text" style="margin-bottom:14px"></div>
   <div class="row">
     <button class="act" onclick="resolveApproval(true)">Разрешить</button>
@@ -377,6 +377,7 @@ async function pollApprovals(){
   const item = (res.pending || [])[0];
   if (item){
     pendingId = item.id;
+    document.getElementById('approve-who').textContent = `${item.source} просит разрешение`;
     document.getElementById('approve-text').textContent = item.action;
     box.style.display = 'grid';
   } else {

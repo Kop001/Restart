@@ -10,17 +10,19 @@ from datetime import datetime
 
 from anthropic import beta_tool
 
-from .context import ToolContext, ToolError
+from .context import ToolContext, ToolError, guard
 
 
 def register(ctx: ToolContext) -> list:
     @beta_tool
+    @guard
     def current_time() -> str:
         """Возвращает текущие дату, время и часовой пояс машины."""
         now = datetime.now()
         return now.strftime("%Y-%m-%d %H:%M:%S %A") + f" ({time.tzname[0]})"
 
     @beta_tool
+    @guard
     def system_info() -> str:
         """Возвращает сведения о машине: ОС, архитектура, имя хоста, рабочий каталог."""
         return (
@@ -31,6 +33,7 @@ def register(ctx: ToolContext) -> list:
         )
 
     @beta_tool
+    @guard
     def open_url(url: str) -> str:
         """Открывает ссылку или файл в приложении по умолчанию. Требует подтверждения.
 
@@ -45,6 +48,7 @@ def register(ctx: ToolContext) -> list:
         return f"открыл {url}"
 
     @beta_tool
+    @guard
     def notify(title: str, message: str) -> str:
         """Показывает системное уведомление на рабочем столе.
 

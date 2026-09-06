@@ -139,7 +139,7 @@ def test_workers_are_isolated(manager, tmp_path):
     assert not manager.config.history_file.exists()
 
     worker_config = manager._worker_config()
-    assert worker_config.confirm_mode == "deny"
+    assert worker_config.confirm_mode == manager.config.task_confirm_mode == "ask"
     assert worker_config.effort == manager.config.task_effort
     assert "фоновый исполнитель" in worker_config.persona
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from anthropic import beta_tool
 
-from .context import ToolContext, ToolError
+from .context import ToolContext, ToolError, guard
 
 
 def register(ctx: ToolContext) -> list:
@@ -18,6 +18,7 @@ def register(ctx: ToolContext) -> list:
         return ctx.tasks
 
     @beta_tool
+    @guard
     def spawn_task(goal: str, title: str = "") -> str:
         """Запускает задачу в фоне и сразу возвращает управление.
 
@@ -41,6 +42,7 @@ def register(ctx: ToolContext) -> list:
         return f"задача [{task.id}] «{task.title}» запущена в фоне"
 
     @beta_tool
+    @guard
     def list_tasks(active_only: bool = False) -> str:
         """Показывает фоновые задачи и их состояние.
 
@@ -53,6 +55,7 @@ def register(ctx: ToolContext) -> list:
         return "\n".join(task.summary() for task in tasks)
 
     @beta_tool
+    @guard
     def task_result(task_id: str) -> str:
         """Возвращает отчёт фоновой задачи.
 
@@ -69,6 +72,7 @@ def register(ctx: ToolContext) -> list:
         return task.result or f"задача [{task.id}]: {task.status}, отчёта нет"
 
     @beta_tool
+    @guard
     def cancel_task(task_id: str) -> str:
         """Останавливает фоновую задачу.
 

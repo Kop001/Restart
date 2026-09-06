@@ -18,7 +18,7 @@ from ..config import Config
 from ..reminders import ReminderScheduler
 from ..tasks import TaskManager
 from ..voice import Speaker
-from .approvals import ApprovalQueue
+from ..approvals import ApprovalQueue
 
 STATIC = Path(__file__).parent / "static"
 
@@ -28,20 +28,23 @@ class Backend:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.approvals = ApprovalQueue()
+        self.approvals = ApprovalQueue(timeout=config.approval_timeout)
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
         self.events: list[dict] = []
-        self.agent = Agent(config, confirm=self.approvals.request, say=self.say)
+        self.agent = Agent(
+            config,
+            confirm=lambda action: self.approvals.request(action, "диалог"),
+            say=self.say,
+        )
         self.scheduler = ReminderScheduler(self.agent.reminders, self._on_reminder)
         self.tasks = TaskManager(
             config,
             self.agent.memory,
             self.agent.reminders,
             client=self.agent.client,
-            # В панели фоновая задача может спросить разрешение: окно
+            # Фоновая задача спрашивает так же, как диалог: окно
             # подтверждения работает из любого потока.
-            confirm=self.approvals.request if config.task_confirm_mode == "ask"
-            else (lambda action: False),
+            confirm=lambda action: self.approvals.request(action, "фоновая задача"),
             on_done=self._on_task_done,
         )
         self.agent.attach_tasks(self.tasks)

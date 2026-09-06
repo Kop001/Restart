@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -15,7 +16,27 @@ if TYPE_CHECKING:  # только для подсказок типов: инач
 
 
 class ToolError(Exception):
-    """Ошибка инструмента: текст уходит модели как результат вызова."""
+    """Ожидаемая осечка инструмента: отказ владельца, нет файла, плохой формат."""
+
+
+def guard(func):
+    """Превращает ожидаемую осечку в обычный текстовый результат.
+
+    Отказ владельца — нормальный исход, а не сбой программы. Без этого SDK
+    печатает в консоль трассировку на каждое «нет», пугая владельца тем,
+    что всё сломалось.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ToolError as exc:
+            return f"не вышло: {exc}"
+        except OSError as exc:
+            return f"ошибка файловой системы: {exc}"
+
+    return wrapper
 
 
 @dataclass

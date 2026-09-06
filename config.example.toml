@@ -9,6 +9,7 @@ thinking = true
 
 # --- поведение ---
 confirm_mode = "ask"     # ask | auto | deny
+approval_timeout = 300   # сколько секунд запрос ждёт ответа владельца
 workspace = "~"          # файловые инструменты не выходят за этот каталог
 web_search = true
 shell_allowlist = ["ls", "cat", "pwd", "date", "df", "git status", "git log"]
@@ -16,7 +17,7 @@ shell_allowlist = ["ls", "cat", "pwd", "date", "df", "git status", "git log"]
 # --- фоновые исполнители ---
 max_parallel_tasks = 3     # сколько задач идёт одновременно
 task_effort = "high"       # глубина размышлений исполнителя
-task_confirm_mode = "deny" # deny | ask (окно подтверждения есть только в панели) | auto
+task_confirm_mode = "ask"  # ask | auto | deny — запрос дойдёт до вас в любом режиме
 task_max_iterations = 30   # потолок ходов одной задачи
 
 # --- голос ---

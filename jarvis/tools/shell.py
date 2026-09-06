@@ -6,11 +6,12 @@ import subprocess
 
 from anthropic import beta_tool
 
-from .context import ToolContext, ToolError
+from .context import ToolContext, ToolError, guard
 
 
 def register(ctx: ToolContext) -> list:
     @beta_tool
+    @guard
     def run_shell(command: str, timeout: int = 0) -> str:
         """Выполняет команду в оболочке рабочей машины и возвращает вывод.
 

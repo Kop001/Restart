@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from anthropic import beta_tool
 
-from .context import ToolContext, ToolError
+from .context import ToolContext, ToolError, guard
 
 
 def register(ctx: ToolContext) -> list:
     @beta_tool
+    @guard
     def list_dir(path: str = ".") -> str:
         """Показывает содержимое каталога в рабочей директории.
 
@@ -28,6 +29,7 @@ def register(ctx: ToolContext) -> list:
         return f"{target}:\n" + "\n".join(lines)
 
     @beta_tool
+    @guard
     def read_file(path: str, max_bytes: int = 20000) -> str:
         """Читает текстовый файл.
 
@@ -44,6 +46,7 @@ def register(ctx: ToolContext) -> list:
         return text + suffix
 
     @beta_tool
+    @guard
     def write_file(path: str, content: str, append: bool = False) -> str:
         """Записывает текст в файл. Требует подтверждения владельца.
 

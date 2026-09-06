@@ -126,3 +126,20 @@ def test_file_tools_write_and_read(ctx):
     tools["write_file"].call({"path": "note.txt", "content": "привет"})
     assert "привет" in tools["read_file"].call({"path": "note.txt"})
     assert "note.txt" in tools["list_dir"].call({})
+
+
+def test_denied_action_returns_text_not_exception(ctx, tmp_path):
+    """Отказ владельца — обычный результат вызова, а не падение с трассировкой."""
+    ctx.config.confirm_mode = "ask"
+    ctx.confirm = lambda action: False
+    tools = {t.to_dict()["name"]: t for t in build_tools(ctx) if not isinstance(t, dict)}
+
+    result = tools["write_file"].call({"path": "секрет.txt", "content": "нет"})
+
+    assert "владелец отклонил" in result
+    assert not (tmp_path / "work" / "секрет.txt").exists()
+
+
+def test_missing_file_returns_text(ctx):
+    tools = {t.to_dict()["name"]: t for t in build_tools(ctx) if not isinstance(t, dict)}
+    assert "файла нет" in tools["read_file"].call({"path": "нет-такого.txt"})

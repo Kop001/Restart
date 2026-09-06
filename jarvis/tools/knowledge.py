@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from anthropic import beta_tool
 
-from .context import ToolContext, ToolError
+from .context import ToolContext, ToolError, guard
 
 
 def register(ctx: ToolContext) -> list:
     @beta_tool
+    @guard
     def remember_fact(text: str, tag: str = "general") -> str:
         """Сохраняет факт о владельце в долговременную память.
 
@@ -23,6 +24,7 @@ def register(ctx: ToolContext) -> list:
         return f"запомнил [{fact['id']}]: {fact['text']}"
 
     @beta_tool
+    @guard
     def recall_facts(query: str = "", tag: str = "") -> str:
         """Ищет факты в долговременной памяти.
 
@@ -36,6 +38,7 @@ def register(ctx: ToolContext) -> list:
         return "\n".join(f"[{f['id']}] ({f['tag']}) {f['text']}" for f in found)
 
     @beta_tool
+    @guard
     def forget_fact(fact_id: str) -> str:
         """Удаляет факт из памяти по идентификатору.
 
@@ -47,6 +50,7 @@ def register(ctx: ToolContext) -> list:
         return f"забыл {fact_id}"
 
     @beta_tool
+    @guard
     def add_reminder(text: str, when: str) -> str:
         """Ставит напоминание; в нужный момент Джарвис произнесёт его вслух.
 
@@ -61,6 +65,7 @@ def register(ctx: ToolContext) -> list:
         return f"напоминание [{item['id']}] на {item['due']}: {item['text']}"
 
     @beta_tool
+    @guard
     def list_reminders() -> str:
         """Показывает активные напоминания."""
         items = ctx.reminders.pending()
@@ -69,6 +74,7 @@ def register(ctx: ToolContext) -> list:
         return "\n".join(f"[{i['id']}] {i['due']} — {i['text']}" for i in items)
 
     @beta_tool
+    @guard
     def cancel_reminder(reminder_id: str) -> str:
         """Отменяет напоминание по идентификатору.
 
