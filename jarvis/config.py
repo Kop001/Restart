@@ -120,9 +120,21 @@ class Config:
     # --- состояние и приватность ---
     state_dir: str = ""
     history_turns: int = 40
-    # Разговор идёт, но на диск не пишется: ни переписка, ни новые факты.
-    # Внутри сессии Джарвис всё помнит, после выхода — ничего.
+    # Разговор идёт, но на диск не пишется: ни переписка, ни новые факты,
+    # ни события. Внутри сессии Джарвис всё помнит, после выхода — ничего.
     private_mode: bool = False
+
+    # --- события ---
+    # Ниже этого веса Джарвис не заговорит сам: помощник, который дёргает
+    # по любому поводу, выключается через день.
+    speak_threshold: int = 60
+    # Часы тишины: с 23 до 8 молчит, кроме прямо важного.
+    quiet_from: int = 23
+    quiet_to: int = 8
+    # Потолок обращений к модели ради разбора событий — за час.
+    model_calls_per_hour: int = 20
+    # Сколько дней живёт хроника. 0 — вечно, но так лучше не делать.
+    chronicle_days: int = 30
 
     def __post_init__(self) -> None:
         if not self.state_dir:
@@ -151,6 +163,10 @@ class Config:
     @property
     def history_file(self) -> Path:
         return self.state / "history.json"
+
+    @property
+    def events_file(self) -> Path:
+        return self.state / "events.json"
 
     @property
     def workspace_path(self) -> Path:

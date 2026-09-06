@@ -18,6 +18,8 @@ import threading
 from .agent import Agent
 from .approvals import ApprovalQueue
 from .config import Config
+from .events import EventLog
+from .loop import EventWorker
 from .reminders import ReminderScheduler
 from .tasks import TaskManager
 from .voice import Microphone, Speaker, Transcriber
@@ -76,6 +78,19 @@ class Session:
             confirm=lambda action: self.approvals.request(action, "диалог"),
             say=self.say,
         )
+        # Единственный вход в систему: и напоминания, и задачи, и реплики
+        # владельца ложатся сюда, а не расходятся по отдельным веткам.
+        self.log = EventLog(
+            config.events_file,
+            keep_days=config.chronicle_days,
+            persist=not config.private_mode,
+        )
+        self.worker = EventWorker(
+            self.log,
+            config,
+            speak=lambda event: self.say(event.text),
+            ask_model=self._triage(),
+        )
         self.scheduler = ReminderScheduler(self.agent.reminders, self._fire_reminder)
         self.tasks = TaskManager(
             config,
@@ -100,16 +115,29 @@ class Session:
         else:
             print(f"🤖 {text}", flush=True)
 
+    def _triage(self):
+        """Разбор моделью — только если есть чем платить за запрос."""
+        from .triage import make_triage
+
+        return make_triage(self.agent.client, self.config)
+
     def _fire_reminder(self, item: dict) -> None:
-        self.say(f"Напоминание: {item['text']}")
+        self.log.emit("время", "напоминание", f"Напоминание: {item['text']}",
+                      weight=80, reminder_id=item["id"])
 
     def _task_done(self, task) -> None:
         if task.status == "cancelled":
+            self.log.emit("задача", "задача-отменена", f"Задача «{task.title}» остановлена",
+                          weight=20, task_id=task.id)
             return
         if task.error:
-            self.say(f"Задача «{task.title}» сорвалась: {task.error}")
+            self.log.emit("задача", "задача-сорвалась",
+                          f"Задача «{task.title}» сорвалась: {task.error}",
+                          weight=75, task_id=task.id)
         else:
-            self.say(f"Задача «{task.title}» готова. {task.result}")
+            self.log.emit("задача", "задача-готова",
+                          f"Задача «{task.title}» готова. {task.result}",
+                          weight=70, task_id=task.id)
 
     # --- разрешения ---
 
@@ -219,6 +247,12 @@ class Session:
 
     def _run_turn(self, text: str) -> None:
         try:
+            # Реплика владельца — тоже событие: без этого в ленте будут
+            # ответы Джарвиса без вопросов.
+            self.log.resolve(
+                self.log.emit("человек", "реплика", text, weight=100),
+                "сказать", "правило", note="человек обратился",
+            )
             self.respond(text)
         except Exception as exc:
             self.say(f"Сорвалось: {type(exc).__name__}: {exc}")
@@ -260,6 +294,7 @@ class Session:
 
     def run_text(self) -> None:
         self.scheduler.start()
+        self.worker.start()
         print("Джарвис на связи. /помощь — список команд.\n")
         lines: queue.Queue = queue.Queue()
         threading.Thread(target=_read_stdin, args=(lines,), daemon=True).start()
@@ -283,6 +318,7 @@ class Session:
         finally:
             print()
             self.scheduler.stop()
+            self.worker.stop()
             self.tasks.shutdown()
 
     def run_voice(self) -> None:
@@ -304,6 +340,7 @@ class Session:
             return
 
         self.scheduler.start()
+        self.worker.start()
         wake = self.config.wake_word.lower()
         if self.config.wake_word_required:
             print(f"Слушаю. Скажите «{self.config.wake_word}», чтобы обратиться. Ctrl+C — выход.\n")
@@ -342,6 +379,7 @@ class Session:
             print()
         finally:
             self.scheduler.stop()
+            self.worker.stop()
             self.tasks.shutdown()
 
 

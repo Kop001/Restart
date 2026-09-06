@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 from ..agent import Agent
 from ..approvals import ApprovalQueue
 from ..config import Config
+from ..events import EventLog
+from ..loop import EventWorker
 from ..reminders import ReminderScheduler
 from ..tasks import TaskManager
 from ..voice import Speaker
@@ -33,11 +35,19 @@ class Backend:
         self.token = load_or_create_token(config.state / "panel-token")
         self.approvals = ApprovalQueue(timeout=config.approval_timeout)
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
-        self.events: list[dict] = []
         self.agent = Agent(
             config,
             confirm=lambda action: self.approvals.request(action, "диалог"),
             say=self.say,
+        )
+        self.log = EventLog(
+            config.events_file,
+            keep_days=config.chronicle_days,
+            persist=not config.private_mode,
+        )
+        self.worker = EventWorker(
+            self.log, config, speak=lambda event: self.say(event.text),
+            ask_model=self._triage(),
         )
         self.scheduler = ReminderScheduler(self.agent.reminders, self._on_reminder)
         self.tasks = TaskManager(
@@ -57,28 +67,40 @@ class Backend:
         if self.speaker is not None:
             self.speaker.say(text)
 
-    def _log(self, kind: str, text: str, at: str) -> None:
-        self.events.append({"type": kind, "text": text, "at": at})
-        self.events[:] = self.events[-50:]
+    def _triage(self):
+        from ..triage import make_triage
+
+        return make_triage(self.agent.client, self.config)
 
     def _on_reminder(self, item: dict) -> None:
-        self._log("reminder", item["text"], item["due"])
-        self.say(f"Напоминание: {item['text']}")
+        self.log.emit("время", "напоминание", f"Напоминание: {item['text']}",
+                      weight=80, reminder_id=item["id"])
 
     def _on_task_done(self, task) -> None:
         if task.status == "cancelled":
-            self._log("task", f"задача «{task.title}» остановлена", f"{task.elapsed} с")
-            return
-        if task.error:
-            self._log("task", f"задача «{task.title}» сорвалась: {task.error}", f"{task.elapsed} с")
-            self.say(f"Задача «{task.title}» сорвалась.")
+            self.log.emit("задача", "задача-отменена", f"Задача «{task.title}» остановлена",
+                          weight=20, task_id=task.id)
+        elif task.error:
+            self.log.emit("задача", "задача-сорвалась",
+                          f"Задача «{task.title}» сорвалась: {task.error}",
+                          weight=75, task_id=task.id)
         else:
-            self._log("task", f"задача «{task.title}» готова", f"{task.elapsed} с")
-            self.say(f"Задача «{task.title}» готова. {task.result}")
+            self.log.emit("задача", "задача-готова",
+                          f"Задача «{task.title}» готова. {task.result}",
+                          weight=70, task_id=task.id)
 
     def chat(self, message: str) -> dict:
+        # Реплика владельца — тоже событие: иначе в ленте будут ответы без вопросов.
+        self.log.resolve(
+            self.log.emit("человек", "реплика", message, weight=100),
+            "сказать", "правило", note="человек обратился",
+        )
         with self._lock:
             answer = self.agent.ask(message)
+        self.log.resolve(
+            self.log.emit("джарвис", "ответ", answer, weight=100),
+            "сказать", "правило", note="ответ владельцу",
+        )
         self.say(answer)
         return {"answer": answer, "stats": self.agent.stats}
 
@@ -101,9 +123,10 @@ class Backend:
             "max_parallel_tasks": self.config.max_parallel_tasks,
             "stats": agent.stats,
             "history_len": len(agent.history.messages),
-            "events": self.events[-20:],
+            "feed": [e.as_dict() for e in self.log.recent(60)],
             "connections": self.connections(),
             "privacy": self.privacy(),
+            "chronicle": self.log.survey(),
         }
 
     def privacy(self) -> dict:
@@ -303,6 +326,7 @@ def serve(
 ) -> None:
     backend = Backend(config)
     backend.scheduler.start()
+    backend.worker.start()
     httpd = ThreadingHTTPServer((host, port), make_handler(backend))
 
     shown = local_ip() if host in ("0.0.0.0", "::") else host
@@ -323,5 +347,6 @@ def serve(
         print()
     finally:
         backend.scheduler.stop()
+        backend.worker.stop()
         backend.tasks.shutdown()
         httpd.server_close()
