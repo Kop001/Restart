@@ -119,7 +119,25 @@ def register(ctx: ToolContext) -> list:
             raise ToolError(f"активного напоминания {reminder_id} нет")
         return f"отменил {reminder_id}"
 
-    return [remember_fact, recall_facts, forget_fact, add_reminder, list_reminders, cancel_reminder]
+    @beta_tool
+    @guard
+    def what_happened(hours: float = 24.0) -> str:
+        """Рассказывает, что произошло за последнее время.
+
+        Бери, когда владелец спрашивает «что нового», «что я пропустил»,
+        «что было, пока меня не было».
+
+        Args:
+            hours: За сколько последних часов смотреть.
+        """
+        if ctx.log is None:
+            raise ToolError("хроника не ведётся в этом режиме")
+        from ..digest import since
+
+        return since(ctx.log, hours) or "за это время ничего не происходило"
+
+    return [remember_fact, recall_facts, forget_fact, what_happened,
+            add_reminder, list_reminders, cancel_reminder]
 
 
 def _line(fact: dict) -> str:

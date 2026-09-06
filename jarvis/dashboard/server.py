@@ -35,15 +35,16 @@ class Backend:
         self.token = load_or_create_token(config.state / "panel-token")
         self.approvals = ApprovalQueue(timeout=config.approval_timeout)
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
-        self.agent = Agent(
-            config,
-            confirm=lambda action: self.approvals.request(action, "диалог"),
-            say=self.say,
-        )
         self.log = EventLog(
             config.events_file,
             keep_days=config.chronicle_days,
             persist=not config.private_mode,
+        )
+        self.agent = Agent(
+            config,
+            confirm=lambda action: self.approvals.request(action, "диалог"),
+            say=self.say,
+            log=self.log,
         )
         self.worker = EventWorker(
             self.log, config, speak=lambda event: self.say(event.text),

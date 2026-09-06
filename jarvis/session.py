@@ -21,6 +21,7 @@ from .config import Config
 from .events import EventLog
 from .loop import EventWorker
 from .reminders import ReminderScheduler
+from .speech import Phrases
 from .tasks import TaskManager
 from .voice import Microphone, Speaker, Transcriber
 
@@ -73,17 +74,16 @@ class Session:
         self.speaker = Speaker(config.tts_backend, config.tts_voice) if config.voice else None
         # Одна очередь на всех: и диалог, и фоновые исполнители спрашивают сюда.
         self.approvals = ApprovalQueue(timeout=config.approval_timeout)
-        self.agent = Agent(
-            config,
-            confirm=lambda action: self.approvals.request(action, "диалог"),
-            say=self.say,
-        )
-        # Единственный вход в систему: и напоминания, и задачи, и реплики
-        # владельца ложатся сюда, а не расходятся по отдельным веткам.
         self.log = EventLog(
             config.events_file,
             keep_days=config.chronicle_days,
             persist=not config.private_mode,
+        )
+        self.agent = Agent(
+            config,
+            confirm=lambda action: self.approvals.request(action, "диалог"),
+            say=self.say,
+            log=self.log,
         )
         self.worker = EventWorker(
             self.log,
@@ -233,8 +233,34 @@ class Session:
     # --- ход диалога ---
 
     def respond(self, text: str) -> str:
-        answer = self.agent.ask(text)
-        self.say(answer)
+        """Ход диалога с ответом на ходу.
+
+        Голосом Джарвис начинает говорить с первой законченной фразы, не
+        дожидаясь конца мысли: на длинном ответе разница между «отвечает»
+        и «завис» — это как раз она.
+
+        В текстовом режиме печатаем так же, по мере готовности.
+        """
+        if self.speaker is not None:
+            phrases = Phrases(self.speaker.say)
+            answer = self.agent.ask(text, on_text=phrases.feed)
+            phrases.flush()
+            return answer
+
+        printed = False
+
+        def show(piece: str) -> None:
+            nonlocal printed
+            if not printed:
+                print("🤖 ", end="", flush=True)
+                printed = True
+            print(piece, end="", flush=True)
+
+        answer = self.agent.ask(text, on_text=show)
+        if printed:
+            print(flush=True)
+        else:
+            self.say(answer)
         return answer
 
     def start_turn(self, text: str) -> None:

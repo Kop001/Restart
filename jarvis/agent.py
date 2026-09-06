@@ -35,6 +35,7 @@ class Agent:
         with_task_tools: bool = True,
         should_stop=None,
         source: str = "диалог",
+        log=None,
     ) -> None:
         self.config = config
         self.client = client or anthropic.Anthropic()
@@ -54,8 +55,14 @@ class Agent:
             confirm=confirm or (lambda action: False),
             say=say or (lambda text: print(text)),
             source=source,
+            log=log,
         )
         self.tools = build_tools(self.ctx, with_tasks=with_task_tools)
+        # Порядок фиксирован — он входит в префикс запроса, а кэш префиксный.
+        self.tool_specs = [t if isinstance(t, dict) else t.to_dict() for t in self.tools]
+        self.callable_tools = {
+            t.to_dict()["name"]: t for t in self.tools if not isinstance(t, dict)
+        }
         self._extra_params_supported = True
         # Счётчики для панели «Аналитика».
         self.stats: dict[str, int] = {
@@ -107,39 +114,53 @@ class Agent:
 
     # --- основной цикл ---
 
-    def ask(self, user_input: str) -> str:
-        """Прогоняет реплику владельца через модель и возвращает текст ответа."""
+    def ask(self, user_input: str, on_text=None) -> str:
+        """Прогоняет реплику владельца через модель и возвращает текст ответа.
+
+        Цикл вызова инструментов написан вручную, а не взят из SDK: готовый
+        ранер не умеет отдавать ответ по мере готовности, а без этого Джарвис
+        молчит всю долгую мысль и только потом выдаёт её целиком.
+
+        Args:
+            user_input: Что сказал владелец.
+            on_text: Получает куски ответа по мере их появления — чтобы
+                начать говорить с первой фразы, не дожидаясь конца.
+        """
         messages = [*self.history.messages, {"role": "user", "content": user_input}]
         new_messages: list[dict] = [{"role": "user", "content": user_input}]
 
-        restarts = 0
         last = None
         stopped = False
-        while True:
-            runner = self._runner(messages)
-            for message in runner:
-                last = message
-                self._track(message)
-                if self.should_stop():
-                    # Останавливаемся на границе хода: начатый вызов
-                    # инструмента уже завершён, история цела.
-                    stopped = True
-                    break
-                # Ранер держит историю у себя и не отдаёт её наружу,
-                # поэтому ведём собственную копию — для диска и для pause_turn.
-                turn = {"role": "assistant", "content": message.content}
-                messages.append(turn)
-                new_messages.append(turn)
-                tool_response = runner.generate_tool_call_response()
-                if tool_response is not None:
-                    messages.append(tool_response)
-                    new_messages.append(tool_response)
+        pauses = 0
 
-            if stopped or last is None or last.stop_reason != "pause_turn":
+        for _ in range(self.config.max_tool_iterations):
+            if self.should_stop():
+                stopped = True
                 break
-            restarts += 1
-            if restarts > MAX_PAUSE_RESTARTS:
+
+            last = self._one_turn(messages, on_text)
+            self._track(last)
+
+            turn = {"role": "assistant", "content": last.content}
+            messages.append(turn)
+            new_messages.append(turn)
+
+            if last.stop_reason == "pause_turn":
+                # Серверный инструмент не уложился в ход: продолжаем без
+                # новой реплики, история уже заканчивается ходом модели.
+                pauses += 1
+                if pauses > MAX_PAUSE_RESTARTS:
+                    break
+                continue
+
+            if last.stop_reason != "tool_use":
                 break
+
+            results = self._run_tools(last)
+            if results:
+                answer = {"role": "user", "content": results}
+                messages.append(answer)
+                new_messages.append(answer)
 
         self.stats["turns"] += 1
         self.history.extend(new_messages)
@@ -153,30 +174,57 @@ class Agent:
             return f"я не могу ответить на это{f' ({reason})' if reason else ''}"
         return extract_text(last) or "готово"
 
-    def _runner(self, messages: list[dict]):
+    def _one_turn(self, messages: list[dict], on_text=None):
+        """Один запрос к модели с потоковой выдачей текста."""
+        params = self._params(messages)
+        try:
+            return self._stream(params, on_text, extra=True)
+        except (TypeError, anthropic.BadRequestError):
+            # Старый SDK или модель без серверных фолбэков — дальше без них.
+            self._extra_params_supported = False
+            return self._stream(params, on_text, extra=False)
+
+    def _stream(self, params: dict, on_text, extra: bool):
+        if extra and self._extra_params_supported and self.config.refusal_fallback:
+            params = {**params, "betas": [FALLBACK_BETA], "fallbacks": "default"}
+        with self.client.beta.messages.stream(**params) as stream:
+            if on_text is not None:
+                for piece in stream.text_stream:
+                    on_text(piece)
+            return stream.get_final_message()
+
+    def _run_tools(self, message) -> list[dict]:
+        """Выполняет вызванные инструменты и собирает ответы для модели.
+
+        Серверные инструменты вроде веб-поиска выполняются на стороне
+        Anthropic — их блоки сюда не попадают и выполнять нечего.
+        """
+        results: list[dict] = []
+        for block in message.content:
+            if getattr(block, "type", None) != "tool_use":
+                continue
+            tool = self.callable_tools.get(block.name)
+            if tool is None:
+                results.append(_tool_result(block.id, f"нет такого навыка: {block.name}", True))
+                continue
+            try:
+                results.append(_tool_result(block.id, str(tool.call(block.input))))
+            except Exception as exc:
+                results.append(_tool_result(block.id, f"{type(exc).__name__}: {exc}", True))
+        return results
+
+    def _params(self, messages: list[dict]) -> dict:
         params: dict = {
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
             "system": self.system_prompt(),
             "messages": messages,
-            "tools": self.tools,
-            "max_iterations": self.config.max_tool_iterations,
+            "tools": self.tool_specs,
             "output_config": {"effort": self.config.effort},
         }
         if self.config.thinking:
             params["thinking"] = {"type": "adaptive"}
-
-        if self._extra_params_supported and self.config.refusal_fallback:
-            try:
-                return self.client.beta.messages.tool_runner(
-                    **params, betas=[FALLBACK_BETA], fallbacks="default"
-                )
-            except (TypeError, anthropic.BadRequestError):
-                # Старый SDK или модель без серверных фолбэков —
-                # дальше работаем без них и больше не пробуем.
-                self._extra_params_supported = False
-
-        return self.client.beta.messages.tool_runner(**params)
+        return params
 
     def _track(self, message) -> None:
         """Копит расход токенов и число вызовов инструментов."""
@@ -203,6 +251,13 @@ class Agent:
     def reset(self) -> None:
         """Забывает текущий разговор, но не долговременную память."""
         self.history.clear()
+
+
+def _tool_result(tool_use_id: str, content: str, is_error: bool = False) -> dict:
+    result = {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+    if is_error:
+        result["is_error"] = True
+    return result
 
 
 def extract_text(message) -> str:

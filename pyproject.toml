@@ -40,6 +40,8 @@ include = ["jarvis*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Заглушка Messages API лежит рядом с тестами и импортируется по имени.
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100

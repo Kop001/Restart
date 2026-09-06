@@ -13,6 +13,7 @@ from ..memory import Memory
 from ..reminders import Reminders
 
 if TYPE_CHECKING:  # только для подсказок типов: иначе вышел бы цикл импорта
+    from ..events import EventLog
     from ..tasks import TaskManager
 
 
@@ -54,6 +55,8 @@ class ToolContext:
     tasks: TaskManager | None = None
     # Кто записывает факты — чтобы потом было видно, откуда Джарвис это взял.
     source: str = "диалог"
+    # Хроника событий: из неё собирается рассказ о том, что случилось.
+    log: EventLog | None = None
 
     def ensure_allowed(self, action: str) -> None:
         """Проверяет политику подтверждений перед опасным действием."""
