@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import uuid
@@ -64,43 +65,62 @@ def _write(path: Path, payload) -> None:
 
 
 class Memory:
-    """Факты о владельце, которые Джарвис помнит между запусками."""
+    """Факты о владельце, которые Джарвис помнит между запусками.
+
+    Факт не удаляется, когда устаревает: он помечается заменённым и перестаёт
+    попадать в промпт. Так видно, что чем вытеснено, и ошибочную замену можно
+    заметить — а молчаливое удаление заметить нельзя.
+    """
 
     def __init__(self, path: Path, persist: bool = True) -> None:
         self.path = path
         self.persist = persist
-        self.facts: list[dict] = _read(path, [])
+        self.facts: list[dict] = [_upgrade(f) for f in _read(path, [])]
         # Память одна на всех: основной диалог и фоновые исполнители
         # пишут в неё из разных потоков.
         self._lock = threading.Lock()
 
-    def add(self, text: str, tag: str = "general") -> dict:
-        fact = {
-            "id": uuid.uuid4().hex[:8],
-            "text": text.strip(),
-            "tag": tag.strip() or "general",
-            "created_at": time.strftime("%Y-%m-%d %H:%M"),
-        }
+    # --- запись ---
+
+    def add(
+        self,
+        text: str,
+        tag: str = "general",
+        replaces: str = "",
+        importance: str = "normal",
+    ) -> dict:
+        """Записывает факт, при необходимости заменяя устаревший.
+
+        Возвращает записанный факт. Если такой уже есть слово в слово —
+        возвращает существующий, не плодя копию.
+        """
+        text = text.strip()
+        if not text:
+            raise ValueError("пустой факт")
+
         with self._lock:
+            twin = self._find_twin_locked(text)
+            if twin is not None:
+                return twin
+
+            fact = {
+                "id": uuid.uuid4().hex[:8],
+                "text": text,
+                "tag": (tag.strip() or "general"),
+                "importance": importance if importance in IMPORTANCE else "normal",
+                "created_at": time.strftime("%Y-%m-%d %H:%M"),
+                "uses": 0,
+                "superseded_by": None,
+                "superseded_at": None,
+            }
             self.facts.append(fact)
+            if replaces:
+                self._supersede_locked(replaces, fact["id"])
             self._save_locked()
         return fact
 
-    def search(self, query: str = "", tag: str = "") -> list[dict]:
-        query = query.lower().strip()
-        tag = tag.lower().strip()
-        result = self.facts
-        if tag:
-            result = [f for f in result if f["tag"].lower() == tag]
-        if query:
-            result = [f for f in result if query in f["text"].lower()]
-        return result
-
-    def search_all(self) -> list[dict]:
-        with self._lock:
-            return list(self.facts)
-
     def forget(self, fact_id: str) -> bool:
+        """Удаляет факт насовсем — в отличие от замены."""
         with self._lock:
             before = len(self.facts)
             self.facts = [f for f in self.facts if f["id"] != fact_id]
@@ -109,12 +129,82 @@ class Memory:
             self._save_locked()
         return True
 
+    # --- чтение ---
+
+    def active(self) -> list[dict]:
+        """Факты, которые ещё в силе."""
+        with self._lock:
+            return [f for f in self.facts if not f["superseded_by"]]
+
+    def stale(self) -> list[dict]:
+        """Заменённые факты — их видно в панели, но в работу они не идут."""
+        with self._lock:
+            return [f for f in self.facts if f["superseded_by"]]
+
+    def search(
+        self,
+        query: str = "",
+        tag: str = "",
+        include_stale: bool = False,
+        count: bool = False,
+    ) -> list[dict]:
+        """Ищет факты. `count` отмечает, что они пригодились."""
+        query = query.lower().strip()
+        tag = tag.lower().strip()
+
+        with self._lock:
+            found = [
+                f for f in self.facts
+                if (include_stale or not f["superseded_by"])
+                and (not tag or f["tag"].lower() == tag)
+                and (not query or query in f["text"].lower())
+            ]
+            if count and found:
+                for fact in found:
+                    fact["uses"] += 1
+                self._save_locked()
+            return list(found)
+
+    def search_all(self) -> list[dict]:
+        with self._lock:
+            return list(self.facts)
+
     def as_prompt(self, limit: int = 100) -> str:
-        """Факты в виде куска системного промпта."""
-        if not self.facts:
+        """Действующие факты в виде куска системного промпта."""
+        facts = self.active()
+        if not facts:
             return ""
-        lines = [f"- [{f['id']}] ({f['tag']}) {f['text']}" for f in self.facts[-limit:]]
+        lines = [
+            f"- [{f['id']}] ({f['tag']}{'!' if f['importance'] == 'high' else ''}) {f['text']}"
+            for f in facts[-limit:]
+        ]
         return "Что ты уже знаешь о владельце:\n" + "\n".join(lines)
+
+    # --- служебное ---
+
+    def find_twin(self, text: str) -> dict | None:
+        """Ищет действующий факт, который слово в слово повторяет новый.
+
+        Нужна вызывающему коду: по одному возвращённому факту не понять,
+        записали его сейчас или он лежал раньше.
+        """
+        with self._lock:
+            return self._find_twin_locked(text)
+
+    def _find_twin_locked(self, text: str) -> dict | None:
+        key = _key(text)
+        for fact in self.facts:
+            if not fact["superseded_by"] and _key(fact["text"]) == key:
+                return fact
+        return None
+
+    def _supersede_locked(self, old_id: str, new_id: str) -> bool:
+        for fact in self.facts:
+            if fact["id"] == old_id and not fact["superseded_by"]:
+                fact["superseded_by"] = new_id
+                fact["superseded_at"] = time.strftime("%Y-%m-%d %H:%M")
+                return True
+        return False
 
     def save(self) -> None:
         with self._lock:
@@ -125,6 +215,24 @@ class Memory:
         if not self.persist:
             return
         _write(self.path, self.facts)
+
+
+IMPORTANCE = ("low", "normal", "high")
+
+# Поля, которых не было в первой версии памяти. Старые файлы читаются как есть,
+# недостающее добирается значениями по умолчанию.
+DEFAULTS = {"importance": "normal", "uses": 0, "superseded_by": None, "superseded_at": None}
+
+
+def _upgrade(fact: dict) -> dict:
+    for name, value in DEFAULTS.items():
+        fact.setdefault(name, value)
+    return fact
+
+
+def _key(text: str) -> str:
+    """Приводит фразу к виду, в котором сравниваются почти-дубликаты."""
+    return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
 class History:

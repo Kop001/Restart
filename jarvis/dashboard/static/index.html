@@ -310,10 +310,22 @@ function viewCore(view){
       <div class="row" style="margin-bottom:10px">
         <input id="ft" placeholder="новый факт"><input id="fg" placeholder="тег" style="max-width:160px">
         <button class="act" id="fadd">+</button></div>
-      <table><tr><th>id</th><th>Тег</th><th>Факт</th><th></th></tr>
-      ${state.memory.map(f=>`<tr><td>${esc(f.id)}</td><td>${esc(f.tag)}</td><td>${esc(f.text)}</td>
+      <table><tr><th>id</th><th>Тег</th><th>Факт</th><th>Обращений</th><th></th></tr>
+      ${state.memory.map(f=>`<tr><td>${esc(f.id)}</td>
+        <td>${esc(f.tag)}${f.importance==='high'?' <span class="pill bad">важно</span>':''}</td>
+        <td>${esc(f.text)}</td><td>${f.uses ?? 0}</td>
         <td><button class="act" onclick="forgetFact('${f.id}')">забыть</button></td></tr>`).join('')
-        || '<tr><td colspan="4" style="color:var(--muted)">память пуста</td></tr>'}</table></div>`));
+        || '<tr><td colspan="5" style="color:var(--muted)">память пуста</td></tr>'}</table></div>
+    ${state.memory_stale.length ? `<div class="card" style="margin-top:12px">
+      <h3>Заменённые</h3>
+      <div style="color:var(--muted);margin-bottom:8px">В работу не идут и в модель
+        не отправляются. Видно, чтобы можно было заметить ошибочную замену.</div>
+      <table><tr><th>id</th><th>Факт</th><th>Заменён на</th><th>Когда</th><th></th></tr>
+      ${state.memory_stale.map(f=>`<tr style="color:var(--muted)">
+        <td>${esc(f.id)}</td><td>${esc(f.text)}</td><td>${esc(f.superseded_by||'')}</td>
+        <td>${esc(f.superseded_at||'')}</td>
+        <td><button class="act" onclick="forgetFact('${f.id}')">стереть</button></td>
+      </tr>`).join('')}</table></div>` : ''}`));
   document.getElementById('fadd').onclick = async () => {
     await api('/api/memory', {text:document.getElementById('ft').value,
                               tag:document.getElementById('fg').value || 'general'});

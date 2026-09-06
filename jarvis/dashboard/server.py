@@ -94,7 +94,8 @@ class Backend:
                 "wake_word": self.config.wake_word,
             },
             "skills": [_skill(tool) for tool in agent.tools],
-            "memory": agent.memory.facts,
+            "memory": agent.memory.active(),
+            "memory_stale": agent.memory.stale(),
             "reminders": agent.reminders.pending(),
             "tasks": [task.as_dict() for task in self.tasks.list()],
             "max_parallel_tasks": self.config.max_parallel_tasks,
@@ -231,7 +232,15 @@ def make_handler(backend: Backend):
                 ok = backend.approvals.resolve(data.get("id", ""), bool(data.get("approved")))
                 return self._json({"ok": ok})
             if route == "/api/memory":
-                fact = backend.agent.memory.add(data.get("text", ""), data.get("tag", "general"))
+                try:
+                    fact = backend.agent.memory.add(
+                        data.get("text", ""),
+                        data.get("tag", "general"),
+                        replaces=data.get("replaces", ""),
+                        importance=data.get("importance", "normal"),
+                    )
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
                 return self._json(fact)
             if route == "/api/memory/forget":
                 return self._json({"ok": backend.agent.memory.forget(data.get("id", ""))})
