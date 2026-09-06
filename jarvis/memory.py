@@ -37,18 +37,38 @@ def _read(path: Path, default):
         return default
 
 
+# Личные данные — только для владельца. Каталог 700, файлы 600: иначе их
+# читает любой пользователь машины, а в них переписка и факты о человеке.
+DIR_MODE = 0o700
+FILE_MODE = 0o600
+
+
+def secure(path: Path) -> Path:
+    """Закрывает файл или каталог от посторонних. На Windows — тихо ничего."""
+    try:
+        path.chmod(DIR_MODE if path.is_dir() else FILE_MODE)
+    except OSError:
+        pass
+    return path
+
+
 def _write(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    secure(path.parent)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Права ставим до подмены: между записью и chmod не должно быть окна,
+    # в котором файл лежит открытым.
+    secure(tmp)
     tmp.replace(path)
 
 
 class Memory:
     """Факты о владельце, которые Джарвис помнит между запусками."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, persist: bool = True) -> None:
         self.path = path
+        self.persist = persist
         self.facts: list[dict] = _read(path, [])
         # Память одна на всех: основной диалог и фоновые исполнители
         # пишут в неё из разных потоков.
@@ -101,6 +121,9 @@ class Memory:
             self._save_locked()
 
     def _save_locked(self) -> None:
+        # В приватном режиме новые факты живут только в памяти процесса.
+        if not self.persist:
+            return
         _write(self.path, self.facts)
 
 
@@ -111,10 +134,13 @@ class History:
     вызов инструмента, иначе API отвергнет запрос.
     """
 
-    def __init__(self, path: Path, max_turns: int = 40) -> None:
+    def __init__(self, path: Path, max_turns: int = 40, persist: bool = True) -> None:
         self.path = path
         self.max_turns = max_turns
-        self.messages: list[dict] = _read(path, [])
+        # В приватном режиме прошлое с диска не поднимаем и новое не пишем:
+        # разговор живёт только пока запущен процесс.
+        self.persist = persist
+        self.messages: list[dict] = _read(path, []) if persist else []
 
     def extend(self, messages: list[dict]) -> None:
         self.messages.extend(to_plain(messages))
@@ -135,7 +161,11 @@ class History:
         self.messages = []
         self.save()
 
+
+
     def save(self) -> None:
+        if not self.persist:
+            return
         _write(self.path, self.messages)
 
 

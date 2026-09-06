@@ -14,6 +14,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .memory import secure
+
 _RELATIVE = re.compile(
     r"(?:через\s+)?(\d+)\s*(сек|секунд\w*|мин|минут\w*|час\w*|дн\w*|s|sec|m|min|h|hour|d|day)s?\b",
     re.IGNORECASE,
@@ -114,8 +116,10 @@ class Reminders:
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        secure(self.path.parent)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.items, ensure_ascii=False, indent=2), encoding="utf-8")
+        secure(tmp)
         tmp.replace(self.path)
 
 

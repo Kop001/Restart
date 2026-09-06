@@ -102,6 +102,17 @@ class Backend:
             "history_len": len(agent.history.messages),
             "events": self.events[-20:],
             "connections": self.connections(),
+            "privacy": self.privacy(),
+        }
+
+    def privacy(self) -> dict:
+        """Что Джарвис хранит о владельце и где."""
+        from ..privacy import survey
+
+        return {
+            "counts": survey(self.config),
+            "state_dir": str(self.config.state),
+            "private_mode": self.config.private_mode,
         }
 
     def connections(self) -> list[dict]:
@@ -242,6 +253,15 @@ def make_handler(backend: Backend):
                 return self._json(task.as_dict())
             if route == "/api/tasks/cancel":
                 return self._json({"ok": backend.tasks.cancel(data.get("id", ""))})
+            if route == "/api/wipe":
+                from ..privacy import KINDS, describe, wipe
+
+                kinds = tuple(k for k in data.get("kinds", KINDS) if k in KINDS) or KINDS
+                removed = wipe(backend.config, kinds)
+                backend.agent.reset()
+                if "memory" in kinds:
+                    backend.agent.memory.facts.clear()
+                return self._json({"report": describe(removed)})
             if route == "/api/reset":
                 backend.agent.reset()
                 return self._json({"ok": True})

@@ -25,6 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="политика подтверждения опасных действий")
     parser.add_argument("--no-web-search", dest="web_search", action="store_false", default=None,
                         help="отключить веб-поиск")
+    parser.add_argument("--private", dest="private_mode", action="store_true", default=None,
+                        help="не писать разговор и новые факты на диск")
 
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("chat", help="диалог в терминале (по умолчанию)")
@@ -49,6 +51,13 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument("--voice", action="store_true", default=None, help="озвучить ответ")
 
     sub.add_parser("doctor", help="проверить окружение")
+
+    wipe = sub.add_parser("wipe", help="стереть личные данные Джарвиса")
+    wipe.add_argument("--history", action="store_true", help="только переписку")
+    wipe.add_argument("--memory", action="store_true", help="только память о вас")
+    wipe.add_argument("--tasks", action="store_true", help="только истории фоновых задач")
+    wipe.add_argument("--reminders", action="store_true", help="только напоминания")
+    wipe.add_argument("-y", "--yes", action="store_true", help="не переспрашивать")
     return parser
 
 
@@ -59,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     overrides = {
         key: getattr(args, key, None)
         for key in ("model", "effort", "workspace", "confirm_mode", "web_search",
-                    "wake_word", "wake_word_required", "stt_model", "voice")
+                    "wake_word", "wake_word_required", "stt_model", "voice", "private_mode")
     }
     if command == "voice":
         overrides["voice"] = True
@@ -67,6 +76,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "doctor":
         return doctor(config)
+
+    if command == "wipe":
+        return wipe_data(config, args)
 
     if not _has_credentials():
         print(
@@ -93,6 +105,32 @@ def main(argv: list[str] | None = None) -> int:
         session.run_voice()
         return 0
     session.run_text()
+    return 0
+
+
+def wipe_data(config: Config, args) -> int:
+    """Стирает личные данные. Без флагов — все сразу."""
+    from .privacy import KINDS, TITLES, describe, survey, wipe
+
+    chosen = tuple(kind for kind in KINDS if getattr(args, kind))
+    chosen = chosen or KINDS
+
+    counts = survey(config)
+    print("Будет стёрто безвозвратно:")
+    for kind in chosen:
+        print(f"  {TITLES[kind]}: {counts[kind]}")
+    print(f"Каталог: {config.state}")
+
+    if not args.yes:
+        try:
+            answer = input("Стереть? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in {"y", "yes", "д", "да"}:
+            print("Отменено.")
+            return 1
+
+    print(describe(wipe(config, chosen)))
     return 0
 
 

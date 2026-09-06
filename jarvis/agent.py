@@ -39,9 +39,12 @@ class Agent:
         self.client = client or anthropic.Anthropic()
         # Память и напоминания общие: фоновые исполнители получают их снаружи,
         # чтобы всё, что узнал один, знали остальные.
-        self.memory = memory or Memory(config.memory_file)
+        keep = not config.private_mode
+        self.memory = memory or Memory(config.memory_file, persist=keep)
         self.reminders = reminders or Reminders(config.reminders_file)
-        self.history = History(history_path or config.history_file, config.history_turns)
+        self.history = History(
+            history_path or config.history_file, config.history_turns, persist=keep
+        )
         self.should_stop = should_stop or (lambda: False)
         self.ctx = ToolContext(
             config=config,
@@ -92,6 +95,8 @@ class Agent:
             f"- рабочий каталог: {self.config.workspace_path}",
             f"- голосовой режим: {'включён' if self.config.voice else 'выключен'}",
             f"- подтверждение опасных действий: {self.config.confirm_mode}",
+            "- запись на диск: "
+            + ("выключена, разговор не сохранится" if self.config.private_mode else "включена"),
         ]
         if pending:
             due = "; ".join(f"{i['due']} {i['text']}" for i in pending)

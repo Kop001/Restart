@@ -117,9 +117,12 @@ class Config:
     silence_duration: float = 1.2
     max_phrase_seconds: float = 30.0
 
-    # --- состояние ---
+    # --- состояние и приватность ---
     state_dir: str = ""
     history_turns: int = 40
+    # Разговор идёт, но на диск не пишется: ни переписка, ни новые факты.
+    # Внутри сессии Джарвис всё помнит, после выхода — ничего.
+    private_mode: bool = False
 
     def __post_init__(self) -> None:
         if not self.state_dir:
@@ -130,6 +133,11 @@ class Config:
     def state(self) -> Path:
         path = Path(self.state_dir).expanduser()
         path.mkdir(parents=True, exist_ok=True)
+        # Каталог с памятью и перепиской — только для владельца.
+        try:
+            path.chmod(0o700)
+        except OSError:
+            pass
         return path
 
     @property

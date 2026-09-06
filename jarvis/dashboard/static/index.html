@@ -96,6 +96,7 @@ const SECTIONS = [
   {id:'agents',   nav:'nav-agents',  label:'Исполнители',  title:'Исполнители',      sub:'фоновые задачи, идущие параллельно'},
   {id:'skills',   nav:'nav-agents',  label:'Навыки',       title:'Навыки',           sub:'инструменты, доступные модели'},
   {id:'core',     nav:'nav-intel',   label:'Ядро знаний',  title:'Ядро знаний',      sub:'долговременная память'},
+  {id:'privacy',  nav:'nav-system',  label:'Приватность',  title:'Приватность',      sub:'что Джарвис знает о вас и где это лежит'},
   {id:'conn',     nav:'nav-system',  label:'Подключения',  title:'Подключения',      sub:'что доступно этой сборке'},
   {id:'stats',    nav:'nav-system',  label:'Аналитика',    title:'Аналитика',        sub:'расход токенов и вызовы'},
 ];
@@ -148,7 +149,7 @@ function render(){
   if (!state){ view.innerHTML = '<div class="card">Загрузка…</div>'; return; }
   view.innerHTML = '';
   ({home:viewHome, comms:viewComms, tasks:viewTasks, agents:viewAgents, skills:viewSkills,
-    core:viewCore, conn:viewConn, stats:viewStats})[current](view);
+    core:viewCore, privacy:viewPrivacy, conn:viewConn, stats:viewStats})[current](view);
 }
 
 /* ---------- разделы ---------- */
@@ -360,6 +361,46 @@ function drawGraph(host){
   parts.push(`<text x="${cx}" y="${cy + 34}" fill="#00e5c0" font-size="10"
     text-anchor="middle" letter-spacing="2">JARVIS</text></svg>`);
   host.innerHTML = parts.join('');
+}
+
+const PRIVACY_TITLES = {history:'Переписка', memory:'Память о вас',
+                        tasks:'Истории фоновых задач', reminders:'Напоминания'};
+
+function viewPrivacy(view){
+  const p = state.privacy;
+  const rows = Object.entries(p.counts).map(([kind, n]) => `<tr>
+    <td>${PRIVACY_TITLES[kind] || kind}</td><td>${n}</td>
+    <td><button class="act" onclick="wipe(['${kind}'])">стереть</button></td></tr>`).join('');
+  view.appendChild(el(`
+    <div class="card"><h3>Запись на диск</h3>
+      <div>${p.private_mode
+        ? 'Выключена — разговор не сохраняется и после выхода не останется.'
+        : 'Включена — переписка и новые факты пишутся на диск.'}</div>
+      <div style="color:var(--muted);margin-top:6px">
+        Переключается при запуске: <code>jarvis --private</code></div></div>
+
+    <div class="card" style="margin-top:12px"><h3>Что хранится</h3>
+      <table><tr><th>Что</th><th>Записей</th><th></th></tr>${rows}</table>
+      <div style="color:var(--muted);margin-top:10px;word-break:break-all">
+        Всё лежит в ${esc(p.state_dir)} — вне репозитория, доступно только вам.</div>
+      <div style="margin-top:12px">
+        <button class="act" onclick="wipe()">стереть всё</button></div></div>
+
+    <div class="card" style="margin-top:12px"><h3>Что уходит наружу</h3>
+      <div>При каждой вашей реплике в Claude API уходит память, последние
+      сообщения переписки и результаты вызванных инструментов — иначе модель
+      не помнит, о чём был разговор.</div>
+      <div style="margin-top:6px">Звук с микрофона не уходит: распознавание
+      и синтез речи работают на этой машине.</div></div>`));
+}
+
+async function wipe(kinds){
+  const what = kinds ? PRIVACY_TITLES[kinds[0]].toLowerCase() : 'всё: переписку, память, задачи и напоминания';
+  if (!confirm(`Стереть ${what}? Отменить будет нельзя.`)) return;
+  const res = await api('/api/wipe', kinds ? {kinds} : {});
+  chatLog = [];
+  alert(res.report || res.error);
+  refresh();
 }
 
 function viewConn(view){

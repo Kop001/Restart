@@ -28,6 +28,7 @@ COMMANDS = {
     "/память": "memory", "/memory": "memory",
     "/напоминания": "reminders", "/reminders": "reminders",
     "/задачи": "tasks", "/tasks": "tasks",
+    "/стереть": "wipe", "/wipe": "wipe",
     "/помощь": "help", "/help": "help",
 }
 
@@ -38,6 +39,7 @@ HELP = """\
   /напоминания   — активные напоминания
   /задачи        — фоновые задачи и их состояние
   /сброс         — забыть текущий разговор (память останется)
+  /стереть       — стереть с диска всё: переписку, память, задачи
   /выход         — завершить работу
 
 Когда Джарвис или фоновая задача просят разрешение, ответьте «да» или «нет» —
@@ -155,7 +157,29 @@ class Session:
         elif action == "tasks":
             items = self.tasks.list()
             print("\n".join(task.summary() for task in items) or "Фоновых задач нет.")
+        elif action == "wipe":
+            self.wipe_everything()
         return False
+
+    def wipe_everything(self) -> None:
+        """Стирает личные данные с диска, спросив подтверждение."""
+        from .privacy import KINDS, TITLES, describe, survey, wipe
+
+        counts = survey(self.config)
+        print("Будет стёрто безвозвратно:")
+        for kind in KINDS:
+            print(f"  {TITLES[kind]}: {counts[kind]}")
+        try:
+            answer = input("Стереть? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in {"y", "yes", "д", "да"}:
+            print("Отменено.")
+            return
+        print(describe(wipe(self.config)))
+        # Разговор в памяти процесса тоже обнуляем, иначе он вернётся на диск.
+        self.agent.reset()
+        self.agent.memory.facts.clear()
 
     def request_quit(self) -> bool:
         """Просит завершить работу. True — можно выходить прямо сейчас.
