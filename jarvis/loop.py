@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 from .config import Config
 from .events import SILENT, SPEAK, Event, EventLog
-from .rules import BY_MODEL, BY_RULE, ModelBudget, decide
+from .rules import BY_MODEL, BY_RULE, Attention, ModelBudget, decide
 
 
 class EventWorker:
@@ -24,12 +24,14 @@ class EventWorker:
         *,
         speak: Callable[[Event], None],
         ask_model: Callable[[Event], tuple[str, str]] | None = None,
+        attention: Attention | None = None,
         interval: float = 1.0,
     ) -> None:
         self.log = log
         self.config = config
         self.speak = speak
         self.ask_model = ask_model
+        self.attention = attention
         self.interval = interval
         self.budget = ModelBudget(config.model_calls_per_hour)
         self._stop = threading.Event()
@@ -48,18 +50,38 @@ class EventWorker:
             self._thread = None
 
     def drain(self) -> int:
-        """Разбирает всё, что накопилось. Возвращает число разобранных."""
+        """Разбирает накопившееся. Возвращает число разобранных.
+
+        Вслух за один такт произносится не больше одного: пять сообщений
+        подряд — это не помощник, а сирена. Остальное подождёт следующего
+        такта и скажется по очереди.
+        """
         handled = 0
+        said = 0
         for event in self.log.pending():
-            if self._handle(event):
-                handled += 1
+            if not self._decide(event):
+                continue
+            handled += 1
+            if event.outcome != SPEAK:
+                continue
+            if said:
+                # Решение принято и записано, но голос уже занят —
+                # вернём событие в очередь на следующий такт.
+                event.outcome = ""
+                handled -= 1
+                continue
+            said += 1
+            try:
+                self.speak(event)
+            except Exception:
+                pass
         return handled
 
     # --- разбор одного события ---
 
-    def _handle(self, event: Event) -> bool:
+    def _decide(self, event: Event) -> bool:
         try:
-            verdict = decide(event, self.config)
+            verdict = decide(event, self.config, attention=self.attention)
             if verdict is not None:
                 self.log.resolve(event, verdict.outcome, BY_RULE, note=verdict.why)
             else:
@@ -69,12 +91,6 @@ class EventWorker:
             self.log.defer(event)
             event.note = f"{type(exc).__name__}: {exc}"
             return False
-
-        if event.outcome == SPEAK:
-            try:
-                self.speak(event)
-            except Exception:
-                pass
         return True
 
     def _ask(self, event: Event) -> None:

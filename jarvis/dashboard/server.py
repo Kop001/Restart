@@ -20,6 +20,7 @@ from ..config import Config
 from ..events import EventLog
 from ..loop import EventWorker
 from ..reminders import ReminderScheduler
+from ..rules import Attention
 from ..tasks import TaskManager
 from ..voice import Speaker
 from .auth import COOKIE, load_or_create_token, matches, token_from_request
@@ -46,9 +47,10 @@ class Backend:
             say=self.say,
             log=self.log,
         )
+        self.attention = Attention(config.attention_file, persist=not config.private_mode)
         self.worker = EventWorker(
             self.log, config, speak=lambda event: self.say(event.text),
-            ask_model=self._triage(),
+            ask_model=self._triage(), attention=self.attention,
         )
         self.scheduler = ReminderScheduler(self.agent.reminders, self._on_reminder)
         self.tasks = TaskManager(
@@ -286,6 +288,15 @@ def make_handler(backend: Backend):
                 return self._json(task.as_dict())
             if route == "/api/tasks/cancel":
                 return self._json({"ok": backend.tasks.cancel(data.get("id", ""))})
+            if route == "/api/dismiss":
+                source, kind = data.get("source", ""), data.get("kind", "")
+                if not source or not kind:
+                    return self._json({"error": "нечего приглушать"}, 400)
+                count = backend.attention.dismiss(source, kind)
+                return self._json({
+                    "report": f"такое больше не буду показывать так часто "
+                              f"(отказов: {count})",
+                })
             if route == "/api/wipe":
                 from ..privacy import KINDS, describe, wipe
 

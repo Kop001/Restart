@@ -257,3 +257,102 @@ def test_survey_counts_what_left_the_machine(log, config):
 )
 def test_model_answer_is_parsed_carefully(answer, outcome):
     assert _parse(answer)[0] == outcome
+
+
+# --- не больше одного «сказать» за такт ---
+
+def test_only_one_thing_is_said_per_tick(log, config):
+    """Пять сообщений подряд — это не помощник, а сирена."""
+    spoken: list[str] = []
+    worker = EventWorker(log, config, speak=lambda e: spoken.append(e.text))
+    for i in range(4):
+        log.emit("время", "напоминание", f"напоминание {i}", weight=80)
+
+    worker.drain()
+
+    assert len(spoken) == 1
+    assert len(log.pending()) == 3, "остальное ждёт следующего такта"
+
+
+def test_the_rest_is_said_on_later_ticks(log, config):
+    spoken: list[str] = []
+    worker = EventWorker(log, config, speak=lambda e: spoken.append(e.text))
+    for i in range(3):
+        log.emit("время", "напоминание", f"напоминание {i}", weight=80)
+
+    for _ in range(3):
+        worker.drain()
+
+    assert spoken == ["напоминание 0", "напоминание 1", "напоминание 2"]
+    assert log.pending() == []
+
+
+def test_silence_is_not_rationed(log, config):
+    """Молчание голос не занимает — молчать можно сколько угодно за такт."""
+    worker = EventWorker(log, config, speak=lambda e: None)
+    for i in range(10):
+        log.emit("почта", "письмо", f"рассылка {i}", weight=10)
+
+    handled = worker.drain()
+
+    assert handled == 10
+    assert log.pending() == []
+
+
+# --- подавление повторов после отказа ---
+
+def test_dismissal_raises_the_bar_for_that_kind_only(config, tmp_path):
+    from jarvis.rules import Attention
+
+    attention = Attention(tmp_path / "attention.json")
+    letter = Event("почта", "письмо", "письмо", weight=70)
+    task = Event("задача", "задача-готова", "готово", weight=70)
+
+    assert decide(letter, config, DAY, attention) is None, "сначала спорное — модели"
+
+    attention.dismiss("почта", "письмо")
+    attention.dismiss("почта", "письмо")
+
+    verdict = decide(letter, config, DAY, attention)
+    assert verdict is not None and verdict.outcome == SILENT
+    assert "порога 90" in verdict.why, "порог поднялся на два шага"
+    # Соседний род событий не пострадал.
+    assert decide(task, config, DAY, attention).outcome == SPEAK
+
+
+def test_reaction_lowers_the_bar_back(config, tmp_path):
+    from jarvis.rules import Attention
+
+    attention = Attention(tmp_path / "attention.json")
+    attention.dismiss("почта", "письмо")
+    attention.welcome("почта", "письмо")
+
+    assert attention.raised_by(Event("почта", "письмо", "письмо")) == 0
+
+
+def test_the_bar_does_not_rise_forever(tmp_path):
+    from jarvis.rules import Attention
+
+    attention = Attention(tmp_path / "attention.json")
+    for _ in range(20):
+        attention.dismiss("почта", "письмо")
+
+    assert attention.raised_by(Event("почта", "письмо", "x")) == Attention.CEILING
+
+
+def test_dismissals_survive_restart(tmp_path):
+    from jarvis.rules import Attention
+
+    path = tmp_path / "attention.json"
+    Attention(path).dismiss("почта", "письмо")
+
+    assert Attention(path).counts == {"почта/письмо": 1}
+
+
+def test_private_mode_forgets_dismissals(tmp_path):
+    from jarvis.rules import Attention
+
+    path = tmp_path / "attention.json"
+    Attention(path, persist=False).dismiss("почта", "письмо")
+
+    assert not path.exists()

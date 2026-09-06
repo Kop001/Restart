@@ -10,12 +10,16 @@
 
 from __future__ import annotations
 
+import json
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from .config import Config
 from .events import SILENT, SPEAK, URGENT, Event
+from .memory import secure
 
 BY_RULE = "правило"
 BY_MODEL = "модель"
@@ -27,7 +31,62 @@ class Decision:
     why: str
 
 
-def decide(event: Event, config: Config, now: datetime | None = None) -> Decision | None:
+class Attention:
+    """Память о том, на что владелец махнул рукой.
+
+    Порог одинаковый для всех событий — плохой порог. Если человек трижды
+    отмахнулся от писем определённого рода, четвёртый раз спрашивать не надо:
+    поднимаем планку именно для них, а не для всего сразу.
+    """
+
+    # На сколько поднимается планка за каждый отказ и докуда максимум.
+    STEP = 15
+    CEILING = 45
+
+    def __init__(self, path: Path, persist: bool = True) -> None:
+        self.path = path
+        self.persist = persist
+        self._lock = threading.Lock()
+        try:
+            self.counts: dict[str, int] = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self.counts = {}
+
+    def dismiss(self, source: str, kind: str) -> int:
+        """Владелец отмахнулся: в следующий раз планка выше."""
+        key = f"{source}/{kind}"
+        with self._lock:
+            self.counts[key] = self.counts.get(key, 0) + 1
+            self._save()
+            return self.counts[key]
+
+    def welcome(self, source: str, kind: str) -> None:
+        """Владелец отреагировал: планку возвращаем обратно."""
+        key = f"{source}/{kind}"
+        with self._lock:
+            if self.counts.pop(key, None) is not None:
+                self._save()
+
+    def raised_by(self, event: Event) -> int:
+        return min(self.CEILING, self.STEP * self.counts.get(f"{event.source}/{event.kind}", 0))
+
+    def _save(self) -> None:
+        if not self.persist:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        secure(self.path.parent)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.counts, ensure_ascii=False, indent=2), encoding="utf-8")
+        secure(tmp)
+        tmp.replace(self.path)
+
+
+def decide(
+    event: Event,
+    config: Config,
+    now: datetime | None = None,
+    attention: Attention | None = None,
+) -> Decision | None:
     """Решение без модели. None — правила не разобрали, нужна модель.
 
     Порядок важен: сначала то, что заведомо требует голоса, потом то, что
@@ -48,8 +107,10 @@ def decide(event: Event, config: Config, now: datetime | None = None) -> Decisio
         return Decision(SILENT, "часы тишины")
 
     # Ниже порога вмешательства не стоит того, чтобы прерывать человека.
-    if event.weight < config.speak_threshold:
-        return Decision(SILENT, f"вес {event.weight} ниже порога {config.speak_threshold}")
+    # Порог поднят для того, от чего владелец уже отмахивался.
+    threshold = config.speak_threshold + (attention.raised_by(event) if attention else 0)
+    if event.weight < threshold:
+        return Decision(SILENT, f"вес {event.weight} ниже порога {threshold}")
 
     # Заведомо шумное: служебные каталоги, автоматические уведомления.
     if event.kind == "файл" and _is_noise(event.details.get("path", "")):

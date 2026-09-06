@@ -227,8 +227,13 @@ function viewFeed(view){
     flush();
     if (e.source === 'человек') wrap.appendChild(said('me', 'Вы', e));
     else if (e.source === 'джарвис') wrap.appendChild(said('ai', 'Джарвис', e));
-    else wrap.appendChild(el(`<div class="quiet"><time>${clock(e.at)}</time>
-      <span>${esc(e.text)}</span></div>`));
+    else {
+      const row = el(`<div class="quiet"><time>${clock(e.at)}</time>
+        <span>${esc(e.text)}</span>
+        <button class="act plain" title="реже показывать такое">тише</button></div>`);
+      row.querySelector('button').onclick = () => hush(e.source, e.kind);
+      wrap.appendChild(row);
+    }
   }
   flush();
 
@@ -242,6 +247,12 @@ const said = (cls, who, e) => el(
 
 const plural = n => (n % 10 === 1 && n % 100 !== 11) ? 'событие'
   : ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) ? 'события' : 'событий';
+
+async function hush(source, kind){
+  const res = await api('/api/dismiss', {source, kind});
+  alert(res.report || res.error);
+  refresh();
+}
 
 async function send(){
   const box = document.getElementById('say');

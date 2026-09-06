@@ -169,6 +169,10 @@ class Config:
         return self.state / "events.json"
 
     @property
+    def attention_file(self) -> Path:
+        return self.state / "attention.json"
+
+    @property
     def workspace_path(self) -> Path:
         return Path(self.workspace).expanduser().resolve()
 

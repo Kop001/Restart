@@ -21,6 +21,7 @@ from .config import Config
 from .events import EventLog
 from .loop import EventWorker
 from .reminders import ReminderScheduler
+from .rules import Attention
 from .speech import Phrases
 from .tasks import TaskManager
 from .voice import Microphone, Speaker, Transcriber
@@ -32,6 +33,7 @@ COMMANDS = {
     "/напоминания": "reminders", "/reminders": "reminders",
     "/задачи": "tasks", "/tasks": "tasks",
     "/стереть": "wipe", "/wipe": "wipe",
+    "/тише": "hush", "/hush": "hush",
     "/помощь": "help", "/help": "help",
 }
 
@@ -43,6 +45,7 @@ HELP = """\
   /задачи        — фоновые задачи и их состояние
   /сброс         — забыть текущий разговор (память останется)
   /стереть       — стереть с диска всё: переписку, память, задачи
+  /тише          — реже беспокоить тем, о чём он сказал последним
   /выход         — завершить работу
 
 Когда Джарвис или фоновая задача просят разрешение, ответьте «да» или «нет» —
@@ -85,11 +88,13 @@ class Session:
             say=self.say,
             log=self.log,
         )
+        self.attention = Attention(config.attention_file, persist=not config.private_mode)
         self.worker = EventWorker(
             self.log,
             config,
             speak=lambda event: self.say(event.text),
             ask_model=self._triage(),
+            attention=self.attention,
         )
         self.scheduler = ReminderScheduler(self.agent.reminders, self._fire_reminder)
         self.tasks = TaskManager(
@@ -187,7 +192,20 @@ class Session:
             print("\n".join(task.summary() for task in items) or "Фоновых задач нет.")
         elif action == "wipe":
             self.wipe_everything()
+        elif action == "hush":
+            self.hush_last()
         return False
+
+    def hush_last(self) -> None:
+        """Приглушает то, о чём Джарвис заговорил последним."""
+        spoken = [e for e in self.log.spoken() if e.source not in ("человек", "джарвис")]
+        if not spoken:
+            print("Пока нечего приглушать.")
+            return
+        last = max(spoken, key=lambda e: e.at)
+        count = self.attention.dismiss(last.source, last.kind)
+        print(f"Понял: «{last.source}/{last.kind}» буду показывать реже "
+              f"(отказов: {count}).")
 
     def wipe_everything(self) -> None:
         """Стирает личные данные с диска, спросив подтверждение."""
