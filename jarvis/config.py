@@ -135,6 +135,9 @@ class Config:
     model_calls_per_hour: int = 20
     # Сколько дней живёт хроника. 0 — вечно, но так лучше не делать.
     chronicle_days: int = 30
+    # Сколько дней Джарвис помнит сами разговоры. Дольше хроники: хроника —
+    # журнал происходящего, а это то, о чём человек с ним говорил.
+    recall_days: int = 90
 
     def __post_init__(self) -> None:
         if not self.state_dir:
@@ -167,6 +170,10 @@ class Config:
     @property
     def events_file(self) -> Path:
         return self.state / "events.json"
+
+    @property
+    def recall_file(self) -> Path:
+        return self.state / "recall.json"
 
     @property
     def attention_file(self) -> Path:

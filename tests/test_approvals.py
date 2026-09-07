@@ -12,6 +12,7 @@ from stub_api import message, serve
 from jarvis.approvals import ApprovalQueue
 from jarvis.config import Config
 from jarvis.memory import Memory
+from jarvis.recall import Recall
 from jarvis.reminders import Reminders
 from jarvis.session import Session, parse_answer
 from jarvis.tasks import TaskManager
@@ -155,7 +156,7 @@ def test_background_task_asks_owner_and_proceeds(writing_api, tmp_path, monkeypa
     client = anthropic.Anthropic(api_key="sk-ant-stub", base_url=writing_api, max_retries=0)
     manager = TaskManager(
         config, Memory(config.memory_file), Reminders(config.reminders_file),
-        client=client,
+        recall=Recall(config.recall_file), client=client,
         confirm=lambda action: queue.request(action, "фоновая задача"),
     )
     try:

@@ -57,6 +57,7 @@ class Backend:
             config,
             self.agent.memory,
             self.agent.reminders,
+            recall=self.agent.recall,
             client=self.agent.client,
             # Фоновая задача спрашивает так же, как диалог: окно
             # подтверждения работает из любого потока.
@@ -311,8 +312,12 @@ def make_handler(backend: Backend):
                 kinds = tuple(k for k in data.get("kinds", KINDS) if k in KINDS) or KINDS
                 removed = wipe(backend.config, kinds)
                 backend.agent.reset()
+                # Стёртое надо убрать и из памяти процесса, иначе следующая
+                # запись вернёт его на диск целиком.
                 if "memory" in kinds:
                     backend.agent.memory.facts.clear()
+                if "recall" in kinds:
+                    backend.agent.recall.episodes.clear()
                 return self._json({"report": describe(removed)})
             if route == "/api/reset":
                 backend.agent.reset()

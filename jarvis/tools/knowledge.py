@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from anthropic import beta_tool
 
+from ..recall import when
 from .context import ToolContext, ToolError, guard
 
 
@@ -73,6 +74,25 @@ def register(ctx: ToolContext) -> list:
 
     @beta_tool
     @guard
+    def recall_talks(query: str) -> str:
+        """Ищет в прошлых разговорах — тех, что уже выпали из истории.
+
+        Нужен, когда владелец ссылается на сказанное раньше: «мы это уже
+        обсуждали», «что я тебе говорил про...». Ищет по словам, а не
+        дословно, поэтому спрашивать можно как думается.
+
+        Args:
+            query: О чём вспомнить — своими словами.
+        """
+        found = ctx.recall.search(query, count=5)
+        if not found:
+            return "в прошлых разговорах такого нет"
+        return "\n\n".join(
+            f"{when(e['at'])}:\nвы: {e['asked']}\nя: {e['answered']}" for e in found
+        )
+
+    @beta_tool
+    @guard
     def forget_fact(fact_id: str) -> str:
         """Удаляет факт из памяти по идентификатору.
 
@@ -136,7 +156,7 @@ def register(ctx: ToolContext) -> list:
 
         return since(ctx.log, hours) or "за это время ничего не происходило"
 
-    return [remember_fact, recall_facts, forget_fact, what_happened,
+    return [remember_fact, recall_facts, recall_talks, forget_fact, what_happened,
             add_reminder, list_reminders, cancel_reminder]
 
 

@@ -22,6 +22,7 @@ import anthropic
 
 from .config import Config
 from .memory import Memory
+from .recall import Recall
 from .reminders import Reminders
 
 WORKER_PERSONA = """\
@@ -91,12 +92,17 @@ class TaskManager:
         memory: Memory,
         reminders: Reminders,
         *,
+        recall: Recall,
         client: anthropic.Anthropic,
         confirm: Callable[[str], bool],
         on_done: Callable[[Task], None] | None = None,
     ) -> None:
         self.config = config
         self.memory = memory
+        # Память разговоров одна на всех — как и память фактов. Своя у каждого
+        # исполнителя означала бы три потока, пишущих в один файл через один
+        # и тот же промежуточный `.tmp`.
+        self.recall = recall
         self.reminders = reminders
         self.client = client
         self.confirm = confirm
@@ -192,6 +198,7 @@ class TaskManager:
                 confirm=self.confirm,
                 say=lambda text: None,
                 memory=self.memory,
+                recall=self.recall,
                 reminders=self.reminders,
                 history_path=history_path,
                 with_task_tools=False,

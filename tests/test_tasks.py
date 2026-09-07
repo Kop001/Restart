@@ -10,6 +10,7 @@ from stub_api import message, serve
 
 from jarvis.config import Config
 from jarvis.memory import Memory
+from jarvis.recall import Recall
 from jarvis.reminders import Reminders
 from jarvis.tasks import TaskManager
 from jarvis.tools import build_tools
@@ -45,6 +46,7 @@ def manager(slow_api, tmp_path, monkeypatch):
         config,
         Memory(config.memory_file),
         Reminders(config.reminders_file),
+        recall=Recall(config.recall_file),
         client=client,
         confirm=lambda action: False,
         on_done=done.append,
@@ -84,7 +86,7 @@ def test_queue_respects_parallel_limit(slow_api, tmp_path, monkeypatch):
     client = anthropic.Anthropic(api_key="sk-ant-stub", base_url=slow_api, max_retries=0)
     manager = TaskManager(
         config, Memory(config.memory_file), Reminders(config.reminders_file),
-        client=client, confirm=lambda action: False,
+        recall=Recall(config.recall_file), client=client, confirm=lambda action: False,
     )
     try:
         manager.spawn("первое")

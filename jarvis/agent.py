@@ -10,6 +10,7 @@ import anthropic
 
 from .config import Config
 from .memory import History, Memory
+from .recall import Recall
 from .reminders import Reminders
 from .tools import ToolContext, build_tools
 
@@ -30,6 +31,7 @@ class Agent:
         confirm=None,
         say=None,
         memory: Memory | None = None,
+        recall: Recall | None = None,
         reminders: Reminders | None = None,
         history_path: Path | None = None,
         with_task_tools: bool = True,
@@ -42,8 +44,16 @@ class Agent:
         # Память и напоминания общие: фоновые исполнители получают их снаружи,
         # чтобы всё, что узнал один, знали остальные.
         keep = not config.private_mode
-        self.memory = memory or Memory(config.memory_file, persist=keep)
-        self.reminders = reminders or Reminders(config.reminders_file)
+        # Сверяем с None, а не «или»: у пустой памяти разговоров длина ноль,
+        # то есть она ложна, и `recall or Recall(...)` молча заводил вторую —
+        # два объекта на один файл дрались за промежуточный `.tmp`.
+        self.memory = Memory(config.memory_file, persist=keep) if memory is None else memory
+        self.recall = recall if recall is not None else Recall(
+            config.recall_file, keep_days=config.recall_days, persist=keep
+        )
+        self.reminders = (
+            Reminders(config.reminders_file) if reminders is None else reminders
+        )
         self.history = History(
             history_path or config.history_file, config.history_turns, persist=keep
         )
@@ -51,6 +61,7 @@ class Agent:
         self.ctx = ToolContext(
             config=config,
             memory=self.memory,
+            recall=self.recall,
             reminders=self.reminders,
             confirm=confirm or (lambda action: False),
             say=say or (lambda text: print(text)),
@@ -76,11 +87,16 @@ class Agent:
 
     # --- системный промпт ---
 
-    def system_prompt(self) -> list[dict]:
-        """Системный промпт тремя блоками: от самого стабильного к самому изменчивому.
+    def system_prompt(self, about: str = "") -> list[dict]:
+        """Системный промпт блоками: от самого стабильного к самому изменчивому.
 
         Кэш промптов работает по префиксу, поэтому персона (она не меняется)
-        идёт первой и помечается cache_control, а время — последним.
+        идёт первой и помечается cache_control, а время — последним. Прошлые
+        разговоры меняются реже времени суток, поэтому стоят перед обстановкой.
+
+        Args:
+            about: Реплика владельца — по ней ищутся прошлые разговоры.
+                Пусто — блока о прошлом не будет.
         """
         blocks: list[dict] = [
             {
@@ -92,6 +108,9 @@ class Agent:
         facts = self.memory.as_prompt()
         if facts:
             blocks.append({"type": "text", "text": facts})
+        past = self.recall.as_prompt(about) if about else ""
+        if past:
+            blocks.append({"type": "text", "text": past})
         blocks.append({"type": "text", "text": self._runtime_block()})
         return blocks
 
@@ -172,7 +191,12 @@ class Agent:
         if last.stop_reason == "refusal":
             reason = getattr(last.stop_details, "category", None)
             return f"я не могу ответить на это{f' ({reason})' if reason else ''}"
-        return extract_text(last) or "готово"
+
+        answer = extract_text(last) or "готово"
+        # Разговор откладывается в долгую память сразу: история его вытеснит
+        # через сорок ходов, а человек будет помнить и через месяц.
+        self.recall.add(user_input, answer, source=self.ctx.source)
+        return answer
 
     def _one_turn(self, messages: list[dict], on_text=None):
         """Один запрос к модели с потоковой выдачей текста."""
@@ -217,7 +241,7 @@ class Agent:
         params: dict = {
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
-            "system": self.system_prompt(),
+            "system": self.system_prompt(_last_said(messages)),
             "messages": messages,
             "tools": self.tool_specs,
             "output_config": {"effort": self.config.effort},
@@ -258,6 +282,18 @@ def _tool_result(tool_use_id: str, content: str, is_error: bool = False) -> dict
     if is_error:
         result["is_error"] = True
     return result
+
+
+def _last_said(messages: list[dict]) -> str:
+    """Последняя настоящая реплика владельца в подборке сообщений.
+
+    Не всякое сообщение с ролью user говорит человек: ответы инструментов
+    приходят в той же роли. Отличаем по тому, что реплика — просто строка.
+    """
+    for message in reversed(messages):
+        if message.get("role") == "user" and isinstance(message.get("content"), str):
+            return message["content"]
+    return ""
 
 
 def extract_text(message) -> str:

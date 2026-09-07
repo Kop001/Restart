@@ -13,10 +13,11 @@ from pathlib import Path
 from .config import Config
 
 # Что вообще можно стереть. Порядок — от самого чувствительного.
-KINDS = ("history", "memory", "tasks", "reminders")
+KINDS = ("history", "recall", "memory", "tasks", "reminders")
 
 TITLES = {
     "history": "переписка",
+    "recall": "разговоры",
     "memory": "память о вас",
     "tasks": "истории фоновых задач",
     "reminders": "напоминания",
@@ -27,6 +28,7 @@ def survey(config: Config) -> dict[str, int]:
     """Сколько записей лежит на диске по каждому виду данных."""
     return {
         "history": _count(config.history_file),
+        "recall": _count(config.recall_file),
         "memory": _count(config.memory_file),
         "tasks": len(list((config.state / "tasks").glob("*.json"))),
         "reminders": _count(config.reminders_file),

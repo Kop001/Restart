@@ -101,6 +101,7 @@ class Session:
             config,
             self.agent.memory,
             self.agent.reminders,
+            recall=self.agent.recall,
             client=self.agent.client,
             confirm=lambda action: self.approvals.request(action, "фоновая задача"),
             on_done=self._task_done,
@@ -225,7 +226,10 @@ class Session:
         print(describe(wipe(self.config)))
         # Разговор в памяти процесса тоже обнуляем, иначе он вернётся на диск.
         self.agent.reset()
+        # Списки в памяти процесса чистим отдельно: иначе первая же реплика
+        # запишет их обратно на диск, и стирание окажется показным.
         self.agent.memory.facts.clear()
+        self.agent.recall.episodes.clear()
 
     def request_quit(self) -> bool:
         """Просит завершить работу. True — можно выходить прямо сейчас.

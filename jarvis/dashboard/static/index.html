@@ -368,11 +368,15 @@ function viewMemory(view){
     <div class="block">
       <h2>Где это лежит</h2>
       <div class="hint"><code>${esc(p.state_dir)}</code> — вне репозитория, права только
-        у вас. Запись на диск ${p.private_mode
+        у вас. «Переписка» — текущий разговор целиком, «разговоры» — пары
+        «вопрос и ответ» из прошлого: они переживают обрезку истории и ищутся
+        по словам. Запись на диск ${p.private_mode
           ? '<b>выключена</b>: разговор не сохранится.' : 'включена.'}</div>
       <table>
         <tr><td>Переписка</td><td class="num">${p.counts.history}</td>
             <td><button class="act plain" onclick="wipe(['history'])">стереть</button></td></tr>
+        <tr><td>Разговоры</td><td class="num">${p.counts.recall}</td>
+            <td><button class="act plain" onclick="wipe(['recall'])">стереть</button></td></tr>
         <tr><td>Память</td><td class="num">${p.counts.memory}</td>
             <td><button class="act plain" onclick="wipe(['memory'])">стереть</button></td></tr>
         <tr><td>Напоминания</td><td class="num">${p.counts.reminders}</td>

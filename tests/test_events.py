@@ -21,6 +21,17 @@ def config(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def anytime(config):
+    """Тот же конфиг, но без часов тишины.
+
+    Тесты исполнителя не про тишину, а прогон случается и в три ночи —
+    тогда правило гасило события раньше модели, и тест падал на ровном месте.
+    """
+    config.quiet_from = config.quiet_to = 0
+    return config
+
+
+@pytest.fixture
 def log(config):
     return EventLog(config.events_file, keep_days=config.chronicle_days)
 
@@ -186,14 +197,14 @@ def test_worker_speaks_only_when_told_to(log, config):
     assert log.pending() == []
 
 
-def test_worker_asks_the_model_only_for_the_unresolved(log, config):
+def test_worker_asks_the_model_only_for_the_unresolved(log, anytime):
     asked: list[Event] = []
 
     def ask(event):
         asked.append(event)
         return SPEAK, "похоже на важное"
 
-    worker = EventWorker(log, config, speak=lambda e: None, ask_model=ask)
+    worker = EventWorker(log, anytime, speak=lambda e: None, ask_model=ask)
     log.emit("человек", "реплика", "привет")
     log.emit("почта", "письмо", "письмо от коллеги", weight=70)
     worker.drain()
@@ -210,9 +221,9 @@ def test_events_resolved_by_rule_never_reach_the_model(log, config):
     assert log.recent()[0].decided_by == BY_RULE
 
 
-def test_spent_budget_means_silence_not_a_call(log, config):
-    config.model_calls_per_hour = 0
-    worker = EventWorker(log, config, speak=lambda e: None, ask_model=lambda e: (SPEAK, ""))
+def test_spent_budget_means_silence_not_a_call(log, anytime):
+    anytime.model_calls_per_hour = 0
+    worker = EventWorker(log, anytime, speak=lambda e: None, ask_model=lambda e: (SPEAK, ""))
     log.emit("почта", "письмо", "письмо от коллеги", weight=70)
     worker.drain()
 
@@ -222,8 +233,8 @@ def test_spent_budget_means_silence_not_a_call(log, config):
     assert "бюджет" in event.note
 
 
-def test_model_verdict_is_recorded_as_such(log, config):
-    worker = EventWorker(log, config, speak=lambda e: None,
+def test_model_verdict_is_recorded_as_such(log, anytime):
+    worker = EventWorker(log, anytime, speak=lambda e: None,
                          ask_model=lambda e: (SPEAK, "срочное письмо"))
     log.emit("почта", "письмо", "письмо от коллеги", weight=70)
     worker.drain()
@@ -234,8 +245,8 @@ def test_model_verdict_is_recorded_as_such(log, config):
     assert event.note == "срочное письмо"
 
 
-def test_survey_counts_what_left_the_machine(log, config):
-    worker = EventWorker(log, config, speak=lambda e: None, ask_model=lambda e: (SILENT, ""))
+def test_survey_counts_what_left_the_machine(log, anytime):
+    worker = EventWorker(log, anytime, speak=lambda e: None, ask_model=lambda e: (SILENT, ""))
     log.emit("почта", "письмо", "рассылка", weight=10)
     log.emit("почта", "письмо", "письмо от коллеги", weight=70)
     worker.drain()

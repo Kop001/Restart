@@ -10,6 +10,7 @@ import pytest
 from jarvis.config import Config
 from jarvis.memory import History, Memory
 from jarvis.privacy import KINDS, describe, survey, wipe
+from jarvis.recall import Recall
 from jarvis.reminders import Reminders
 
 # На Windows права POSIX не работают — проверять там нечего.
@@ -34,6 +35,9 @@ def filled(config):
     history = History(config.history_file, 40)
     history.extend([{"role": "user", "content": "пароль от сейфа 1234"}])
 
+    recall = Recall(config.recall_file)
+    recall.add("а что мы решили по деньгам", "решили подождать до весны")
+
     reminders = Reminders(config.reminders_file)
     reminders.add("приём у врача", "через 1 час")
 
@@ -49,7 +53,8 @@ def filled(config):
 def test_personal_files_are_owner_only(filled):
     """Переписку и память не должен читать другой пользователь машины."""
     assert filled.state.stat().st_mode & 0o777 == 0o700
-    for path in (filled.memory_file, filled.history_file, filled.reminders_file):
+    for path in (filled.memory_file, filled.history_file,
+                 filled.recall_file, filled.reminders_file):
         assert path.stat().st_mode & 0o777 == 0o600, path.name
 
 
@@ -66,14 +71,15 @@ def test_temporary_file_is_closed_too(config):
 
 def test_survey_counts_everything(filled):
     counts = survey(filled)
-    assert counts == {"history": 1, "memory": 2, "tasks": 1, "reminders": 1}
+    assert counts == {"history": 1, "recall": 1, "memory": 2, "tasks": 1, "reminders": 1}
 
 
 def test_wipe_removes_files_not_just_contents(filled):
     removed = wipe(filled)
 
-    assert removed == {"history": 1, "memory": 2, "tasks": 1, "reminders": 1}
-    for path in (filled.memory_file, filled.history_file, filled.reminders_file):
+    assert removed == {"history": 1, "recall": 1, "memory": 2, "tasks": 1, "reminders": 1}
+    for path in (filled.memory_file, filled.history_file,
+                 filled.recall_file, filled.reminders_file):
         assert not path.exists(), f"{path.name} должен быть удалён, а не опустошён"
     assert not (filled.state / "tasks").exists()
     assert survey(filled) == dict.fromkeys(KINDS, 0)
